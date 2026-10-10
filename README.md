@@ -121,3 +121,4 @@ ScanIt/
 │   └── utils/
 │       └── history.js         # AsyncStorage-backed scan history
 ```
+# scanit
