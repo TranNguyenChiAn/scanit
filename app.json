@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "ScanIt",
+    "slug": "scanit",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#F4F5F7"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.yourcompany.scanit",
+      "infoPlist": {
+        "NSCameraUsageDescription": "ScanIt uses the camera to scan product barcodes and recognize products."
+      }
+    },
+    "android": {
+      "package": "com.yourcompany.scanit",
+      "permissions": ["CAMERA"]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "ScanIt uses the camera to scan product barcodes and recognize products."
+        }
+      ]
+    ]
+  }
+}
