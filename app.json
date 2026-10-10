@@ -5,9 +5,6 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "splash": {
-      "backgroundColor": "#F4F5F7"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.yourcompany.scanit",
