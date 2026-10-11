@@ -6,11 +6,13 @@ import { colors, spacing, radius } from '../theme/theme';
 import { admin } from '../api';
 import { Header } from '../components/FormBits';
 import ProductImage from '../components/ProductImage';
+import Toast from '../components/Toast';
 
 const STATUS_LABEL = { ACTIVE: 'Đang bán', INACTIVE: 'Ẩn', DISCONTINUED: 'Ngừng bán' };
 
 // Danh sach san pham de quan ly: tim, them, bam vao de sua / xoa.
-export default function AdminProductsScreen({ navigation }) {
+export default function AdminProductsScreen({ navigation, route }) {
+  const [toast, setToast] = useState(null);
   const [q, setQ] = useState('');
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -42,6 +44,15 @@ export default function AdminProductsScreen({ navigation }) {
 
   useEffect(() => { setLoading(true); }, [q]);
 
+  // Man hinh them / sua gui loi nhan qua tham so; hien roi xoa tham so de khong hien lai
+  const incoming = route.params?.toast;
+  useEffect(() => {
+    if (!incoming) return;
+    setToast(incoming);
+    navigation.setParams({ toast: undefined });
+  }, [incoming, navigation]);
+  const hideToast = useCallback(() => setToast(null), []);
+
   function renderItem({ item }) {
     return (
       <Pressable style={styles.card} onPress={() => navigation.navigate('AdminProduct', { productId: item.id })}>
@@ -58,6 +69,7 @@ export default function AdminProductsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.screen}>
       <Header title="Quản lý sản phẩm" onBack={() => navigation.goBack()} />
+      <Toast message={toast} onHide={hideToast} />
       <View style={styles.searchWrap}>
         <TextInput
           style={styles.search}

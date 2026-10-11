@@ -42,6 +42,7 @@ export const admin = {
   setPrimaryPhoto: bind(adminApi.setPrimaryPhoto),
   listColors: bind(adminApi.listColors),
 };
+export { generateVariants, splitList } from './admin';
 export { buildStockRequest, validateProduct, validateVariant, productToForm, variantToForm, EMPTY_PRODUCT, EMPTY_VARIANT } from './admin';
 
 export { ApiError } from './http';

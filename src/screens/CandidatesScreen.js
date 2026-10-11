@@ -39,6 +39,7 @@ export default function CandidatesScreen({ route, navigation }) {
         <View style={styles.cardBody}>
           <Text style={styles.name} numberOfLines={2}>{v.name}</Text>
           {variantText ? <Text style={styles.sub}>{variantText}</Text> : null}
+          {v.note ? <Text style={styles.noteLine} numberOfLines={2}>📝 {v.note}</Text> : null}
           <View style={styles.row}>
             {v.price != null ? <Text style={styles.price}>{formatPrice(v.price)}</Text> : null}
             <Text style={[styles.stock, stock.level === 'out' && styles.stockOut]}>{stock.text}</Text>
@@ -107,6 +108,7 @@ const styles = StyleSheet.create({
   },
   thumb: { width: 72, height: 88, borderRadius: radius.sm, overflow: 'hidden' },
   cardBody: { flex: 1, paddingHorizontal: spacing.sm },
+  noteLine: { fontSize: 12, color: colors.warn, marginTop: 3 },
   name: { fontSize: 15, fontWeight: '600', color: colors.ink },
   sub: { fontSize: 13, color: colors.inkSoft, marginTop: 2 },
   row: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },

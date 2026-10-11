@@ -39,6 +39,7 @@ export function mapSummary(dto, baseUrl) {
     price: dto.retailPrice ?? null,
     quantity: dto.quantity ?? 0,
     image: resolveUrl(dto.image, baseUrl),
+    note: dto.note || null,
   };
 }
 
@@ -78,6 +79,7 @@ export function mapVariant(dto, baseUrl = null) {
     quantity: dto.stock?.quantity ?? 0,
     sku: dto.sku || null,
     barcode: dto.barcode || null,
+    note: dto.note || null,
     status: dto.status || null,
     attributes,
     images,

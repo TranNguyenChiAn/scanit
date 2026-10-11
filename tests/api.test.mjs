@@ -258,6 +258,14 @@ test('quet anh: chac chan -> confident, lay duoc chi tiet theo id', async () => 
   assert.equal(detail.costPrice, undefined);
 });
 
+test('ghi chu cua bien the hien o ket qua quet anh va chi tiet', async () => {
+  const r = await recognizeImage(client(), photo('AMBIGUOUS'));
+  assert.equal(r.candidates[0].variant.note, null);
+  const detail = await getVariantById(client(), 2);
+  assert.equal(detail.note, 'Hàng order, về cuối tháng');
+  assert.equal((await getVariantById(client(), 1)).note, null);
+});
+
 test('quet anh: khong nhan ra -> danh sach rong, khong nem loi', async () => {
   const r = await recognizeImage(client(), photo('NOTHING'));
   assert.deepEqual(r.candidates, []);
@@ -387,4 +395,68 @@ test('admin: them -> them bien the -> sua gia giu bac gia so luong -> ton kho ->
   list = await adminApi.listProducts(h, { q: '7001' });
   assert.equal(list.total, 0);
   await assert.rejects(adminApi.getProduct(h, p.id), (e) => e.status === 404);
+});
+
+test('generateVariants: to hop mau x size, bo trung va bo qua cai da co', () => {
+  const g = adminApi.generateVariants({
+    colors: 'Be, Đen, be', sizes: ['S', 'M'], retail: '300000', note: 'Order',
+    existing: [{ color: { name: 'Đen' }, size: { name: 'S' } }, { color: 'be', size: 'm' }],
+  });
+  assert.equal(g.skipped, 2);
+  assert.deepEqual(g.variants.map((v) => `${v.color}/${v.size}`), ['Be/S', 'Đen/M']);
+  assert.equal(g.variants[0].retail, '300000');
+  assert.equal(g.variants[0].note, 'Order');
+  assert.equal(adminApi.generateVariants({ colors: '', sizes: 'S' }).variants.length, 0);
+});
+
+test('admin: tao san pham kem bien the + ghi chu trong 1 lan; sua / xoa ghi chu', async () => {
+  const h = adminHttp();
+  const { variants } = adminApi.generateVariants({ colors: 'Be, Đen', sizes: 'Free size', retail: '250000', note: 'Hàng order' });
+  const req = adminApi.buildProductCreate({ ...adminApi.EMPTY_PRODUCT, styleCode: '7002', name: 'Set thử' }, variants);
+  assert.equal(req.variants.length, 2);
+  assert.equal(req.variants[0].note, 'Hàng order');
+  assert.deepEqual(req.variants[0].prices, [{ type: 'RETAIL', minQty: 1, price: 250000 }]);
+
+  let p = await adminApi.createProduct(h, { ...adminApi.EMPTY_PRODUCT, styleCode: '7002', name: 'Set thử' }, variants);
+  assert.equal(p.variants.length, 2);
+  assert.equal(p.variants[0].note, 'Hàng order');
+
+  const v = p.variants[0];
+  let form = adminApi.variantToForm(v);
+  assert.equal(form.note, 'Hàng order');
+  p = await adminApi.updateVariant(h, v, { ...form, note: 'Đã về hàng' });
+  assert.equal(p.variants[0].note, 'Đã về hàng');
+  p = await adminApi.updateVariant(h, v, { ...form, note: '  ' });
+  assert.equal(p.variants[0].note, null);
+  // trung bien the trong cung request -> loi, khong tao gi
+  await assert.rejects(adminApi.createProduct(h, { ...adminApi.EMPTY_PRODUCT, styleCode: '7003', name: 'X' }, [variants[0], variants[0]]), (e) => e.status === 409);
+  assert.equal((await adminApi.listProducts(h, { q: '7003' })).total, 0);
+});
+
+test('tai tep len dung XMLHttpRequest khi co (React Native), khong tu dat Content-Type', async () => {
+  const sent = [];
+  globalThis.XMLHttpRequest = class {
+    constructor() { this.headers = {}; }
+    open(method, url) { this.method = method; this.url = url; }
+    setRequestHeader(k, v) { this.headers[k] = v; }
+    send(body) {
+      sent.push({ method: this.method, url: this.url, headers: this.headers, body });
+      this.status = 201;
+      this.responseText = JSON.stringify({ id: 9, url: '/media/m/x.webp', thumbUrl: '/media/t/x.webp' });
+      setTimeout(() => this.onload(), 0);
+    }
+    abort() { this.onabort(); }
+  };
+  try {
+    const m = await adminApi.uploadPhoto(adminHttp(), 5, new Blob(['x']), 3);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].method, 'POST');
+    assert.ok(sent[0].url.endsWith('/api/admin/products/5/media'));
+    assert.equal(sent[0].headers['Content-Type'], undefined);
+    assert.match(sent[0].headers.Authorization, /^Bearer /);
+    assert.ok(sent[0].body instanceof FormData);
+    assert.equal(m.thumbUrl, `${baseUrl}/media/t/x.webp`);
+  } finally {
+    delete globalThis.XMLHttpRequest;
+  }
 });

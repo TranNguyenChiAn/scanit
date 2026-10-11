@@ -30,9 +30,9 @@ const PRICES = [
   { type: 'WHOLESALE', minQty: 1, price: 410000 },
 ];
 
-function variant(id, { barcode, sku, color, quantity, product = SET, prices = PRICES, images = [], status = 'ACTIVE', size = 'Free size' }) {
+function variant(id, { barcode, sku, color, quantity, product = SET, prices = PRICES, images = [], status = 'ACTIVE', size = 'Free size', note = null }) {
   return {
-    id, sku, barcode, status, product,
+    id, sku, barcode, status, product, note,
     color: { id, name: color, hex: null },
     size: { id: 1, name: size },
     prices,
@@ -44,7 +44,7 @@ function variant(id, { barcode, sku, color, quantity, product = SET, prices = PR
 
 const VARIANTS = [
   variant(1, { barcode: '8922000001', sku: '8922-XAMTHAN', color: 'Xám than', quantity: 12, images: ['https://res.cloudinary.com/demo/image/upload/v1/set8922-xam.jpg', 'https://picsum.photos/seed/8922a/900/1200'] }),
-  variant(2, { barcode: '8922000002', sku: '8922-NAUDAM', color: 'Nâu đậm', quantity: 3, images: ['https://picsum.photos/seed/8922b/900/1200'] }),
+  variant(2, { barcode: '8922000002', sku: '8922-NAUDAM', color: 'Nâu đậm', quantity: 3, note: 'Hàng order, về cuối tháng', images: ['https://picsum.photos/seed/8922b/900/1200'] }),
   variant(3, { barcode: '8922000003', sku: '8922-BE', color: 'Be', quantity: 0 }),
   // Ma dai hon chua ma 8922000001: tra ma chinh xac thi khong bi nham
   variant(4, { barcode: '89220000011', sku: 'DECOY-1', color: 'Đen', quantity: 5, product: { ...SET, id: 2, styleCode: 'X', name: 'Sản phẩm khác', description: '', components: [], categories: [] }, prices: [{ type: 'RETAIL', minQty: 1, price: 99000 }] }),
@@ -58,6 +58,7 @@ const summaryOf = (v) => ({
   retailPrice: (v.prices.find((p) => p.type === 'RETAIL') || {}).price, quantity: v.stock.quantity,
   // Anh he thong tu luu: BE tra duong dan tuong doi (/media/...), app tu ghep voi dia chi may chu
   image: v.images[0] || (v.id === 3 ? '/media/t/mock-be.webp' : undefined),
+  note: v.note || undefined,
 });
 
 // 1x1 PNG, de duong dan /media/... mo duoc
@@ -152,7 +153,7 @@ function createServer({ slowMs = 0 } = {}) {
           id, sku: b.sku || `${A.nextSkuBase}-${String(b.color).toUpperCase().replace(/\s+/g, '')}-${String(b.size).toUpperCase().replace(/\s+/g, '')}`,
           barcode: b.barcode || `2000000${String(id).padStart(5, '0')}`, status: 'ACTIVE',
           color: { id: id, name: b.color, hex: null }, size: { id: id, name: b.size }, costPrice: b.costPrice || 0,
-          prices: b.prices || [], quantity: b.quantity || 0, minQuantity: b.minQuantity || 0,
+          prices: b.prices || [], quantity: b.quantity || 0, minQuantity: b.minQuantity || 0, note: b.note || null,
         };
       };
 
@@ -174,6 +175,16 @@ function createServer({ slowMs = 0 } = {}) {
         if (bad) return err(res, 400, 'VALIDATION', bad);
         if (live().some((p) => p.styleCode.toLowerCase() === b.styleCode.toLowerCase())) return err(res, 409, 'CONFLICT', `Mã mẫu ${b.styleCode} đã tồn tại.`);
         const p = { id: A.nextProduct++, ...fields(b), variants: [], media: [], deleted: false };
+        const incoming = b.variants || [];
+        const seen = new Set();
+        for (const v of incoming) {
+          const k = `${String(v.color).toLowerCase()}|${String(v.size).toLowerCase()}`;
+          if (!v.color || !v.size) return err(res, 400, 'VALIDATION', 'Thiếu màu hoặc size');
+          if (seen.has(k)) return err(res, 409, 'CONFLICT', `Trùng biến thể ${v.color} / ${v.size}.`);
+          seen.add(k);
+        }
+        A.nextSkuBase = p.styleCode;
+        for (const v of incoming) p.variants.push(mkVariant(v));
         A.products.push(p);
         return send(res, 201, view(p));
       }
@@ -216,6 +227,7 @@ function createServer({ slowMs = 0 } = {}) {
           if (b.costPrice !== undefined && b.costPrice !== null) v.costPrice = b.costPrice;
           if (b.prices) v.prices = b.prices;
           if (b.minQuantity !== undefined && b.minQuantity !== null) v.minQuantity = b.minQuantity;
+          if (b.note !== undefined && b.note !== null) v.note = b.note.trim() || null;
           return send(res, 200, view(p));
         }
         if (req.method === 'DELETE') { v.status = 'INACTIVE'; return send(res, 200, view(p)); }

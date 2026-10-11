@@ -11,7 +11,7 @@ const MODES = { BARCODE: 'barcode', PHOTO: 'photo' };
 
 export default function ScannerScreen({ navigation }) {
   const [permission, requestPermission] = useCameraPermissions();
-  const [mode, setMode] = useState(MODES.BARCODE);
+  const [mode, setMode] = useState(MODES.PHOTO);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const lockRef = useRef(false);
@@ -121,16 +121,16 @@ export default function ScannerScreen({ navigation }) {
           </Pressable>
           <View style={styles.modeSwitch}>
             <Pressable
-              style={[styles.modeOption, mode === MODES.BARCODE && styles.modeOptionActive]}
-              onPress={() => { setMode(MODES.BARCODE); if (!busy) retry(); }}
-            >
-              <Text style={[styles.modeText, mode === MODES.BARCODE && styles.modeTextActive]}>Mã vạch</Text>
-            </Pressable>
-            <Pressable
               style={[styles.modeOption, mode === MODES.PHOTO && styles.modeOptionActive]}
               onPress={() => { setMode(MODES.PHOTO); if (!busy) retry(); }}
             >
               <Text style={[styles.modeText, mode === MODES.PHOTO && styles.modeTextActive]}>Ảnh</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.modeOption, mode === MODES.BARCODE && styles.modeOptionActive]}
+              onPress={() => { setMode(MODES.BARCODE); if (!busy) retry(); }}
+            >
+              <Text style={[styles.modeText, mode === MODES.BARCODE && styles.modeTextActive]}>Mã vạch</Text>
             </Pressable>
           </View>
         </View>

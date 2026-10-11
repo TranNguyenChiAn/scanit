@@ -4,17 +4,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing } from '../theme/theme';
 import { admin, validateVariant, variantToForm, buildStockRequest, EMPTY_VARIANT } from '../api';
 import { useAuth } from '../auth/AuthContext';
-import { Field, Chips, Button, Header, Section } from '../components/FormBits';
+import { Field, Chips, Button, Header, Section, SaveBar } from '../components/FormBits';
 
 const SIZES = ['Free size', 'S', 'M', 'L', 'XL', 'XXL'];
 
-// Them / sua mot bien the (mau + size): ma, gia, ton. Sua thi co them nhap/xuat/kiem kho.
+// Them / sua mot bien the (mau + size): ma, gia, ghi chu, ton. Sua thi co them nhap/xuat/kiem kho.
+// 3 che do: 'draft' (san pham dang tao, chua luu: tra ket qua ve man hinh san pham), them vao san pham da co, sua.
 export default function AdminVariantScreen({ route, navigation }) {
-  const { productId, variant } = route.params;
-  const creating = !variant;
+  const { productId, variant, mode, draft, index, template } = route.params;
+  const isDraft = mode === 'draft';
+  const creating = isDraft || !variant;
   const { user } = useAuth();
   const canStock = !!user?.permissions?.includes('stock.adjust');
-  const [form, setForm] = useState(creating ? EMPTY_VARIANT : variantToForm(variant));
+  const [form, setForm] = useState(isDraft ? { ...EMPTY_VARIANT, ...(draft || template || {}) } : creating ? { ...EMPTY_VARIANT, ...(template || {}) } : variantToForm(variant));
   const [colorsKnown, setColorsKnown] = useState([]);
   const [saving, setSaving] = useState(false);
   const [quantity, setQuantity] = useState(variant?.quantity ?? 0);
@@ -31,6 +33,10 @@ export default function AdminVariantScreen({ route, navigation }) {
   async function save() {
     const problem = validateVariant(form, { creating });
     if (problem) return Alert.alert('Chưa đủ thông tin', problem);
+    if (isDraft) {
+      navigation.navigate({ name: 'AdminProduct', params: { draftResult: { index: index ?? null, form, nonce: Date.now() } }, merge: true });
+      return;
+    }
     setSaving(true);
     try {
       if (creating) await admin.addVariant(productId, form);
@@ -81,7 +87,7 @@ export default function AdminVariantScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <Header title={creating ? 'Thêm màu / size' : `${variant.color.name} · ${variant.size.name}`} onBack={() => navigation.goBack()} />
+      <Header title={creating ? (isDraft && draft ? 'Sửa màu / size' : 'Thêm màu / size') : `${variant.color.name} · ${variant.size.name}`} onBack={() => navigation.goBack()} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {creating ? (
@@ -102,9 +108,9 @@ export default function AdminVariantScreen({ route, navigation }) {
           <Field label="Mã vạch" value={form.barcode} onChangeText={set('barcode')} keyboardType="number-pad"
             hint={creating ? 'Để trống: hệ thống tự tạo mã để in tem' : 'Xoá trống rồi lưu để tạo mã mới'} />
           <Field label="Cảnh báo sắp hết khi tồn ≤" value={form.minQuantity} onChangeText={set('minQuantity')} keyboardType="number-pad" />
+          <Field label="Ghi chú" value={form.note} onChangeText={set('note')} multiline maxLength={500}
+            placeholder="vd Hàng order, lỗi nhẹ ở tay áo" hint="Hiện cho nhân viên khi quét ra sản phẩm này" />
           {creating ? <Field label="Tồn đầu kỳ" value={form.quantity} onChangeText={set('quantity')} keyboardType="number-pad" placeholder="0" /> : null}
-
-          <Button title={creating ? 'Thêm biến thể' : 'Lưu'} onPress={save} busy={saving} />
 
           {!creating && canStock ? (
             <Section title={`Tồn kho: ${quantity}`}>
@@ -120,6 +126,7 @@ export default function AdminVariantScreen({ route, navigation }) {
 
           {!creating ? <Button title="Xoá biến thể" kind="danger" onPress={confirmDelete} style={{ marginTop: spacing.xl }} /> : null}
         </ScrollView>
+        <SaveBar title={isDraft ? (draft ? 'Xong' : 'Thêm vào sản phẩm') : creating ? 'Thêm biến thể' : 'Lưu'} onPress={save} busy={saving} />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -127,7 +134,7 @@ export default function AdminVariantScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: 60 },
+  content: { padding: spacing.md, paddingBottom: 30 },
   row: { flexDirection: 'row', gap: spacing.sm },
   flex: { flex: 1 },
 });

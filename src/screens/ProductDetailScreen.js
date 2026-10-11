@@ -50,6 +50,12 @@ export default function ProductDetailScreen({ route, navigation }) {
             <Text style={type.price}>{formatPrice(product.price)}</Text>
             <Text style={[styles.stock, { color: STOCK_COLORS[stock.level] }]}>{stock.text}</Text>
           </View>
+          {product.note ? (
+            <View style={styles.noteBox}>
+              <Text style={styles.noteLabel}>Ghi chú</Text>
+              <Text style={styles.noteText}>{product.note}</Text>
+            </View>
+          ) : null}
           {product.prices.length > 1 ? (
             <View style={styles.priceList}>
               {product.prices.map((p) => (
@@ -134,6 +140,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   stock: { fontSize: 15, fontWeight: '700' },
+  noteBox: { marginTop: spacing.md, backgroundColor: colors.warnSoft, borderRadius: radius.sm, padding: spacing.md },
+  noteLabel: { fontSize: 12, fontWeight: '700', color: colors.warn, marginBottom: 2 },
+  noteText: { fontSize: 14, color: colors.ink, lineHeight: 20 },
   priceList: { marginTop: spacing.sm },
   currentVariant: { color: colors.ink, fontWeight: '700' },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.lg },

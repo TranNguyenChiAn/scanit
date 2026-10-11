@@ -12,7 +12,7 @@ export function parseCount(v) {
   return n === null ? null : n;
 }
 
-const splitList = (s) =>
+export const splitList = (s) =>
   String(s || '')
     .split(/[,;\n]/)
     .map((x) => x.trim())
@@ -55,7 +55,7 @@ export function productToForm(p) {
 }
 
 export const EMPTY_VARIANT = {
-  color: '', size: '', sku: '', barcode: '', cost: '', retail: '', wholesale: '', minQuantity: '', quantity: '',
+  color: '', size: '', sku: '', barcode: '', cost: '', retail: '', wholesale: '', minQuantity: '', quantity: '', note: '',
 };
 
 export function validateVariant(f, { creating }) {
@@ -83,6 +83,7 @@ export function buildVariantCreate(f) {
     prices: priceList(f),
     quantity: parseCount(f.quantity) ?? 0,
     minQuantity: parseCount(f.minQuantity) ?? 0,
+    note: f.note?.trim() || null,
   };
 }
 
@@ -95,6 +96,7 @@ export function buildVariantUpdate(f, existing) {
     costPrice: parseMoney(f.cost) ?? 0,
     prices: priceList(f, keep),
     minQuantity: parseCount(f.minQuantity) ?? 0,
+    note: f.note?.trim() ?? '', // rong = xoa ghi chu
   };
 }
 
@@ -104,7 +106,7 @@ export function variantToForm(v) {
   return {
     color: v.color?.name || '', size: v.size?.name || '', sku: v.sku || '', barcode: v.barcode || '',
     cost: str(v.costPrice), retail: str(price('RETAIL')), wholesale: str(price('WHOLESALE')),
-    minQuantity: str(v.minQuantity), quantity: '',
+    minQuantity: str(v.minQuantity), quantity: '', note: v.note || '',
   };
 }
 
@@ -125,8 +127,36 @@ export async function getProduct(http, id) {
   return mapProduct(await http.get(`/api/admin/products/${id}`), await http.baseUrl());
 }
 
-export async function createProduct(http, form) {
-  return mapProduct(await http.post('/api/admin/products', buildProductRequest(form)), await http.baseUrl());
+// Tao san pham cung luc voi cac bien the (BE tao trong 1 giao dich: hoac du hoac khong co gi)
+export function buildProductCreate(form, variantForms = []) {
+  return { ...buildProductRequest(form), variants: variantForms.map(buildVariantCreate) };
+}
+
+export async function createProduct(http, form, variantForms = []) {
+  return mapProduct(await http.post('/api/admin/products', buildProductCreate(form, variantForms)), await http.baseUrl());
+}
+
+// Sinh bien the hang loat: moi to hop mau x size la 1 bien the, dung chung gia/ghi chu.
+// colors/sizes: chuoi ngan cach dau phay hoac mang. existing: cac bien the da co (form hoac {color,size}) de bo qua trung.
+export function generateVariants({ colors, sizes, retail = '', wholesale = '', cost = '', note = '', existing = [] }) {
+  const list = (v) => (Array.isArray(v) ? v : splitList(v)).map((x) => String(x).trim()).filter(Boolean);
+  const dedupe = (arr) => {
+    const seen = new Set();
+    return arr.filter((x) => (seen.has(x.toLowerCase()) ? false : seen.add(x.toLowerCase())));
+  };
+  const cs = dedupe(list(colors));
+  const ss = dedupe(list(sizes));
+  const key = (c, s) => `${c.trim().toLowerCase()}|${s.trim().toLowerCase()}`;
+  const have = new Set(existing.map((e) => key(e.color?.name ?? e.color ?? '', e.size?.name ?? e.size ?? '')));
+  const out = [];
+  let skipped = 0;
+  for (const c of cs) {
+    for (const s of ss) {
+      if (have.has(key(c, s))) { skipped += 1; continue; }
+      out.push({ ...EMPTY_VARIANT, color: c, size: s, retail, wholesale, cost, note });
+    }
+  }
+  return { variants: out, skipped };
 }
 
 export async function updateProduct(http, id, form) {

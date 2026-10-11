@@ -53,7 +53,7 @@ export default function HomeScreen({ navigation }) {
         </View>
         <View style={styles.scanTextWrap}>
           <Text style={styles.scanTitle}>Quét sản phẩm</Text>
-          <Text style={styles.scanSubtitle}>Đưa camera vào mã vạch trên tem</Text>
+          <Text style={styles.scanSubtitle}>Chụp ảnh hoặc quét mã vạch</Text>
         </View>
       </Pressable>
 

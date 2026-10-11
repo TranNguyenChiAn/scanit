@@ -22,6 +22,27 @@ function buildQuery(params) {
   return pairs.length ? `?${pairs.join('&')}` : '';
 }
 
+// Tai tep len bang XMLHttpRequest: fetch moi cua Expo (SDK 54+) khong nhan phan tep dang { uri, name, type }
+// cua React Native ("Unsupported FormDataPart implementation"), con XHR cua RN thi nhan.
+// Tra ve doi tuong giong Response (ok, status, text()).
+function xhrFetch(url, { method, headers, body, signal }) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const abortError = () => Object.assign(new Error('Aborted'), { name: 'AbortError' });
+    xhr.open(method, url);
+    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    xhr.onload = () =>
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, text: async () => xhr.responseText || '' });
+    xhr.onerror = () => reject(new Error('Network request failed'));
+    xhr.onabort = () => reject(abortError());
+    if (signal) {
+      if (signal.aborted) return reject(abortError());
+      signal.addEventListener('abort', () => xhr.abort());
+    }
+    xhr.send(body);
+  });
+}
+
 export function createHttp({
   getBaseUrl,
   getToken = async () => null,
@@ -53,12 +74,14 @@ export function createHttp({
 
     let res;
     try {
-      res = await fetchImpl(`${baseUrl}${path}${buildQuery(params)}`, {
+      const target = `${baseUrl}${path}${buildQuery(params)}`;
+      const init = {
         method,
         headers,
         body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
         signal: controller.signal,
-      });
+      };
+      res = isForm && typeof XMLHttpRequest !== 'undefined' ? await xhrFetch(target, init) : await fetchImpl(target, init);
     } catch (e) {
       if (e?.name === 'AbortError') {
         throw new ApiError('Máy chủ phản hồi quá lâu. Kiểm tra mạng và thử lại.', { code: 'TIMEOUT' });
