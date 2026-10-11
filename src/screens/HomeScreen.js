@@ -1,18 +1,14 @@
 import React, { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  FlatList,
-  SafeAreaView,
-} from 'react-native';
+import { View, Text, StyleSheet, Pressable, FlatList, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, type, spacing, radius } from '../theme/theme';
 import ProductCard from '../components/ProductCard';
 import { getHistory } from '../utils/history';
+import { useAuth } from '../auth/AuthContext';
 
 export default function HomeScreen({ navigation }) {
+  const { user, signOut } = useAuth();
   const [history, setHistory] = useState([]);
 
   useFocusEffect(
@@ -27,49 +23,65 @@ export default function HomeScreen({ navigation }) {
     }, [])
   );
 
+  function confirmSignOut() {
+    Alert.alert('Đăng xuất', 'Bạn muốn đăng xuất khỏi tài khoản này?', [
+      { text: 'Huỷ', style: 'cancel' },
+      { text: 'Đăng xuất', style: 'destructive', onPress: signOut },
+    ]);
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
-        <Text style={type.label}>SCANIT</Text>
-        <Text style={type.display}>Know what you're{'\n'}picking up.</Text>
+      <View style={styles.topRow}>
+        <View style={styles.flex}>
+          <Text style={type.label}>Xin chào</Text>
+          <Text style={type.h1} numberOfLines={1}>
+            {user?.fullName}
+          </Text>
+        </View>
+        <Pressable onPress={confirmSignOut} hitSlop={12}>
+          <Text style={styles.signOut}>Đăng xuất</Text>
+        </Pressable>
       </View>
 
       <Pressable
-        style={({ pressed }) => [
-          styles.scanButton,
-          pressed && styles.scanButtonPressed,
-        ]}
+        style={({ pressed }) => [styles.scanButton, pressed && styles.scanButtonPressed]}
         onPress={() => navigation.navigate('Scanner')}
       >
         <View style={styles.scanIconRing}>
           <View style={styles.scanIconCore} />
         </View>
         <View style={styles.scanTextWrap}>
-          <Text style={styles.scanTitle}>Scan a product</Text>
-          <Text style={styles.scanSubtitle}>Barcode or camera</Text>
+          <Text style={styles.scanTitle}>Quét sản phẩm</Text>
+          <Text style={styles.scanSubtitle}>Đưa camera vào mã vạch trên tem</Text>
         </View>
       </Pressable>
 
+      {user?.permissions?.includes('product.manage') ? (
+        <Pressable
+          style={({ pressed }) => [styles.manageButton, pressed && styles.scanButtonPressed]}
+          onPress={() => navigation.navigate('AdminProducts')}
+        >
+          <Text style={styles.manageTitle}>Quản lý sản phẩm</Text>
+          <Text style={styles.manageSub}>Thêm, sửa, xoá sản phẩm, giá, tồn kho và ảnh</Text>
+        </Pressable>
+      ) : null}
+
       <View style={styles.historyHeader}>
-        <Text style={type.h2}>Recent scans</Text>
+        <Text style={type.h2}>Quét gần đây</Text>
       </View>
 
       {history.length === 0 ? (
         <View style={styles.emptyWrap}>
-          <Text style={styles.emptyText}>
-            Nothing scanned yet. Your recent lookups will show up here.
-          </Text>
+          <Text style={styles.emptyText}>Chưa quét sản phẩm nào. Các sản phẩm bạn vừa tra sẽ hiện ở đây.</Text>
         </View>
       ) : (
         <FlatList
           data={history}
-          keyExtractor={(item) => item.id + item.scannedAt}
+          keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <ProductCard
-              product={item}
-              onPress={(p) => navigation.navigate('ProductDetail', { product: p })}
-            />
+            <ProductCard product={item} onPress={(p) => navigation.navigate('ProductDetail', { product: p })} />
           )}
         />
       )}
@@ -78,14 +90,23 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   screen: {
     flex: 1,
     backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
   },
-  header: {
-    marginTop: spacing.lg,
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.md,
     marginBottom: spacing.lg,
+  },
+  signOut: {
+    color: colors.inkSoft,
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: spacing.md,
   },
   scanButton: {
     backgroundColor: colors.ink,
@@ -95,9 +116,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xl,
   },
-  scanButtonPressed: {
-    opacity: 0.9,
-  },
+  scanButtonPressed: { opacity: 0.9 },
   scanIconRing: {
     width: 48,
     height: 48,
@@ -114,29 +133,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: colors.accent,
   },
-  scanTextWrap: {
-    flex: 1,
+  scanTextWrap: { flex: 1 },
+  scanTitle: { color: colors.white, fontSize: 18, fontWeight: '700' },
+  scanSubtitle: { color: '#A9B1C3', fontSize: 13, marginTop: 2 },
+  manageButton: {
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, marginTop: -spacing.md,
+    marginBottom: spacing.xl, borderWidth: 1, borderColor: colors.border,
   },
-  scanTitle: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  scanSubtitle: {
-    color: '#A9B1C3',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  historyHeader: {
-    marginBottom: spacing.sm,
-  },
-  list: {
-    paddingBottom: spacing.xl,
-  },
-  emptyWrap: {
-    paddingVertical: spacing.lg,
-  },
-  emptyText: {
-    ...type.body,
-  },
+  manageTitle: { fontSize: 17, fontWeight: '700', color: colors.ink },
+  manageSub: { fontSize: 13, color: colors.inkSoft, marginTop: 2 },
+  historyHeader: { marginBottom: spacing.sm },
+  list: { paddingBottom: spacing.xl },
+  emptyWrap: { paddingVertical: spacing.lg },
+  emptyText: { ...type.body },
 });

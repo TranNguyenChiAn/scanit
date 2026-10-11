@@ -9,12 +9,17 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.yourcompany.scanit",
       "infoPlist": {
-        "NSCameraUsageDescription": "ScanIt uses the camera to scan product barcodes and recognize products."
+        "NSCameraUsageDescription": "ScanIt uses the camera to scan product barcodes and recognize products.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
       }
     },
     "android": {
       "package": "com.yourcompany.scanit",
-      "permissions": ["CAMERA"]
+      "permissions": [
+        "CAMERA"
+      ]
     },
     "plugins": [
       [
@@ -22,7 +27,8 @@
         {
           "cameraPermission": "ScanIt uses the camera to scan product barcodes and recognize products."
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

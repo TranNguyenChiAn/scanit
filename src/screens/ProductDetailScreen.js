@@ -1,68 +1,113 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  SafeAreaView,
-} from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, FlatList, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, type, spacing, radius } from '../theme/theme';
-import { formatPrice, imageSource } from '../utils/format';
+import { formatPrice, stockLabel } from '../utils/format';
+import ProductImage from '../components/ProductImage';
+
+const STOCK_COLORS = { ok: colors.accentDark, low: colors.warn, out: colors.danger };
 
 export default function ProductDetailScreen({ route, navigation }) {
   const { product } = route.params;
+  const { width } = useWindowDimensions();
+  const [page, setPage] = useState(0);
+  const stock = stockLabel(product.quantity);
+  const images = product.images?.length ? product.images : [null];
+
+  const rows = [
+    ...product.attributes.map((a) => ({ label: a.name, value: a.unit ? `${a.value} ${a.unit}` : a.value })),
+    product.sku ? { label: 'Mã SKU', value: product.sku } : null,
+    product.barcode ? { label: 'Mã vạch', value: product.barcode } : null,
+    product.category ? { label: 'Danh mục', value: product.category } : null,
+  ].filter(Boolean);
 
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Image source={imageSource(product.image)} style={styles.image} />
+        <FlatList
+          data={images}
+          keyExtractor={(item, i) => `${i}-${item}`}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / width))}
+          renderItem={({ item }) => (
+            <ProductImage url={item} width={900} style={{ width, height: width * 1.1 }} />
+          )}
+        />
+        {images.length > 1 ? (
+          <View style={styles.dots}>
+            {images.map((_, i) => (
+              <View key={i} style={[styles.dot, i === page && styles.dotActive]} />
+            ))}
+          </View>
+        ) : null}
 
         <View style={styles.body}>
-          <Text style={type.label}>{product.category.toUpperCase()}</Text>
-          <Text style={[type.display, styles.name]}>{product.name}</Text>
-          <Text style={styles.brand}>{product.brand}</Text>
+          <Text style={type.display}>{product.name}</Text>
 
-          <Text style={type.price}>{formatPrice(product)}</Text>
-
-          <View style={styles.divider} />
-
-          <Text style={type.h2}>Description</Text>
-          <Text style={[type.body, styles.description]}>
-            {product.description}
-          </Text>
-
-          <View style={styles.divider} />
-
-          <Text style={type.h2}>Details</Text>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Barcode</Text>
-            <Text style={styles.detailValue}>{product.barcode}</Text>
+          <View style={styles.priceRow}>
+            <Text style={type.price}>{formatPrice(product.price)}</Text>
+            <Text style={[styles.stock, { color: STOCK_COLORS[stock.level] }]}>{stock.text}</Text>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Brand</Text>
-            <Text style={styles.detailValue}>{product.brand}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Category</Text>
-            <Text style={styles.detailValue}>{product.category}</Text>
-          </View>
+          {product.prices.length > 1 ? (
+            <View style={styles.priceList}>
+              {product.prices.map((p) => (
+                <View key={`${p.type}-${p.minQty}`} style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>{p.label}</Text>
+                  <Text style={styles.detailValue}>{formatPrice(p.price)}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {product.description ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={type.h2}>Mô tả</Text>
+              <Text style={[type.body, styles.description]}>{product.description}</Text>
+            </>
+          ) : null}
+
+          {rows.length ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={type.h2}>Thông tin</Text>
+              {rows.map((row) => (
+                <View key={row.label} style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>{row.label}</Text>
+                  <Text style={styles.detailValue}>{row.value}</Text>
+                </View>
+              ))}
+            </>
+          ) : null}
+
+          {product.siblings.length > 1 ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={type.h2}>Màu / size khác</Text>
+              {product.siblings.map((v) => (
+                <View key={v.id} style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, v.isCurrent && styles.currentVariant]}>
+                    {v.color} · {v.size}
+                    {v.isCurrent ? '  (đang xem)' : ''}
+                  </Text>
+                  <Text style={[styles.detailValue, { color: STOCK_COLORS[stockLabel(v.quantity).level] }]}>
+                    {stockLabel(v.quantity).text}
+                  </Text>
+                </View>
+              ))}
+            </>
+          ) : null}
         </View>
       </ScrollView>
 
       <View style={styles.footer}>
-        <Pressable
-          style={styles.secondaryBtn}
-          onPress={() => navigation.navigate('Home')}
-        >
-          <Text style={styles.secondaryBtnText}>Done</Text>
+        <Pressable style={styles.secondaryBtn} onPress={() => navigation.navigate('Home')}>
+          <Text style={styles.secondaryBtnText}>Xong</Text>
         </Pressable>
-        <Pressable
-          style={styles.primaryBtn}
-          onPress={() => navigation.replace('Scanner')}
-        >
-          <Text style={styles.primaryBtnText}>Scan another</Text>
+        <Pressable style={styles.primaryBtn} onPress={() => navigation.replace('Scanner')}>
+          <Text style={styles.primaryBtnText}>Quét tiếp</Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -70,39 +115,29 @@ export default function ProductDetailScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    paddingBottom: spacing.xl,
-  },
-  image: {
-    width: '100%',
-    height: 280,
-    backgroundColor: colors.surface,
-  },
-  body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-  },
-  name: {
-    marginTop: spacing.xs,
-  },
-  brand: {
-    fontSize: 14,
-    color: colors.inkSoft,
-    marginTop: 2,
-    marginBottom: spacing.md,
-  },
-  divider: {
-    height: 1,
+  screen: { flex: 1, backgroundColor: colors.background },
+  content: { paddingBottom: spacing.xl },
+  dots: { flexDirection: 'row', justifyContent: 'center', marginTop: spacing.sm },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.border,
-    marginVertical: spacing.lg,
+    marginHorizontal: 3,
   },
-  description: {
+  dotActive: { backgroundColor: colors.ink },
+  body: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
     marginTop: spacing.sm,
   },
+  stock: { fontSize: 15, fontWeight: '700' },
+  priceList: { marginTop: spacing.sm },
+  currentVariant: { color: colors.ink, fontWeight: '700' },
+  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.lg },
+  description: { marginTop: spacing.sm },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -110,15 +145,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  detailLabel: {
-    color: colors.inkSoft,
-    fontSize: 14,
-  },
-  detailValue: {
-    color: colors.ink,
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  detailLabel: { color: colors.inkSoft, fontSize: 14 },
+  detailValue: { color: colors.ink, fontSize: 14, fontWeight: '600', flexShrink: 1, textAlign: 'right', marginLeft: spacing.md },
   footer: {
     flexDirection: 'row',
     padding: spacing.lg,
@@ -135,11 +163,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
   },
-  secondaryBtnText: {
-    color: colors.ink,
-    fontWeight: '600',
-    fontSize: 15,
-  },
+  secondaryBtnText: { color: colors.ink, fontWeight: '600', fontSize: 15 },
   primaryBtn: {
     flex: 1,
     paddingVertical: spacing.md,
@@ -147,9 +171,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.ink,
     alignItems: 'center',
   },
-  primaryBtnText: {
-    color: colors.white,
-    fontWeight: '700',
-    fontSize: 15,
-  },
+  primaryBtnText: { color: colors.white, fontWeight: '700', fontSize: 15 },
 });

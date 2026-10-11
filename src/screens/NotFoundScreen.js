@@ -1,10 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, type, spacing, radius } from '../theme/theme';
 
-// Shown only when a scanned barcode has no catalog match.
-// Photo-recognition misses never route here — they're ignored in place
-// on the Scanner screen instead.
+// Chi hien khi quet ma vach ma he thong khong co san pham tuong ung.
 export default function NotFoundScreen({ route, navigation }) {
   const barcode = route.params?.barcode;
 
@@ -14,28 +13,19 @@ export default function NotFoundScreen({ route, navigation }) {
         <View style={styles.badge}>
           <Text style={styles.badgeText}>?</Text>
         </View>
-        <Text style={type.h1}>No match for this barcode</Text>
-        {barcode ? (
-          <Text style={styles.code}>{barcode}</Text>
-        ) : null}
+        <Text style={type.h1}>Không tìm thấy sản phẩm</Text>
+        {barcode ? <Text style={styles.code}>{barcode}</Text> : null}
         <Text style={[type.body, styles.body]}>
-          This barcode isn't in the catalog yet. Try scanning again, or use
-          photo mode to identify the product instead.
+          Mã vạch này chưa có trong hệ thống. Quét lại, hoặc báo quản lý thêm sản phẩm với mã vạch này.
         </Text>
       </View>
 
       <View style={styles.footer}>
-        <Pressable
-          style={styles.secondaryBtn}
-          onPress={() => navigation.navigate('Home')}
-        >
-          <Text style={styles.secondaryBtnText}>Back home</Text>
+        <Pressable style={styles.secondaryBtn} onPress={() => navigation.navigate('Home')}>
+          <Text style={styles.secondaryBtnText}>Về trang chủ</Text>
         </Pressable>
-        <Pressable
-          style={styles.primaryBtn}
-          onPress={() => navigation.replace('Scanner')}
-        >
-          <Text style={styles.primaryBtnText}>Try again</Text>
+        <Pressable style={styles.primaryBtn} onPress={() => navigation.replace('Scanner')}>
+          <Text style={styles.primaryBtnText}>Quét lại</Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -43,17 +33,8 @@ export default function NotFoundScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-    justifyContent: 'space-between',
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-  },
+  screen: { flex: 1, backgroundColor: colors.background, justifyContent: 'space-between' },
+  content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl },
   badge: {
     width: 64,
     height: 64,
@@ -63,26 +44,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.lg,
   },
-  badgeText: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.warn,
-  },
-  code: {
-    marginTop: spacing.sm,
-    fontSize: 14,
-    color: colors.inkSoft,
-    fontVariant: ['tabular-nums'],
-  },
-  body: {
-    textAlign: 'center',
-    marginTop: spacing.md,
-  },
-  footer: {
-    flexDirection: 'row',
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
+  badgeText: { fontSize: 28, fontWeight: '700', color: colors.warn },
+  code: { marginTop: spacing.sm, fontSize: 14, color: colors.inkSoft, fontVariant: ['tabular-nums'] },
+  body: { textAlign: 'center', marginTop: spacing.md },
+  footer: { flexDirection: 'row', padding: spacing.lg, gap: spacing.md },
   secondaryBtn: {
     flex: 1,
     paddingVertical: spacing.md,
@@ -92,11 +57,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.surface,
   },
-  secondaryBtnText: {
-    color: colors.ink,
-    fontWeight: '600',
-    fontSize: 15,
-  },
+  secondaryBtnText: { color: colors.ink, fontWeight: '600', fontSize: 15 },
   primaryBtn: {
     flex: 1,
     paddingVertical: spacing.md,
@@ -104,9 +65,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.ink,
     alignItems: 'center',
   },
-  primaryBtnText: {
-    color: colors.white,
-    fontWeight: '700',
-    fontSize: 15,
-  },
+  primaryBtnText: { color: colors.white, fontWeight: '700', fontSize: 15 },
 });
