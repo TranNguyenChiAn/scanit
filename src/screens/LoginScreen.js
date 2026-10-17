@@ -13,20 +13,23 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, type, spacing, radius } from '../theme/theme';
 import { useAuth } from '../auth/AuthContext';
-import { getServerUrl } from '../storage/session';
+import { getServerUrl, getShopCode } from '../storage/session';
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
   const [serverUrl, setServerUrl] = useState('');
+  const [shop, setShop] = useState('');
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const accountRef = useRef(null);
   const passwordRef = useRef(null);
 
   // Dien san dia chi may chu da dung lan truoc
   useEffect(() => {
     getServerUrl().then((url) => url && setServerUrl(url));
+    getShopCode().then((code) => code && setShop(code));
   }, []);
 
   async function submit() {
@@ -34,7 +37,7 @@ export default function LoginScreen() {
     setBusy(true);
     setError(null);
     try {
-      await signIn({ serverUrl, account, password });
+      await signIn({ serverUrl, shop, account, password });
     } catch (e) {
       setError(e.message || 'Đăng nhập thất bại. Thử lại.');
       setBusy(false);
@@ -59,11 +62,25 @@ export default function LoginScreen() {
             autoCorrect={false}
             keyboardType="url"
             returnKeyType="next"
-            onSubmitEditing={() => passwordRef.current?.focus()}
+            onSubmitEditing={() => accountRef.current?.focus()}
+          />
+
+          <Text style={styles.label}>Mã cửa hàng</Text>
+          <TextInput
+            style={styles.input}
+            value={shop}
+            onChangeText={setShop}
+            placeholder="vd mei-bee"
+            placeholderTextColor={colors.inkSoft}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="next"
+            onSubmitEditing={() => accountRef.current?.focus()}
           />
 
           <Text style={styles.label}>Số điện thoại, email hoặc tên đăng nhập</Text>
           <TextInput
+            ref={accountRef}
             style={styles.input}
             value={account}
             onChangeText={setAccount}
@@ -71,6 +88,7 @@ export default function LoginScreen() {
             autoCorrect={false}
             textContentType="username"
             returnKeyType="next"
+            onSubmitEditing={() => passwordRef.current?.focus()}
           />
 
           <Text style={styles.label}>Mật khẩu</Text>

@@ -2,6 +2,7 @@ import { createHttp } from './http';
 import { login as loginRequest } from './auth';
 import { findProductByBarcode as findByBarcode, getVariantById as getById } from './products';
 import * as adminApi from './admin';
+import * as orderApi from './orders';
 import { recognizeImage as recognize, confirmScan as confirm } from './scan';
 import { getServerUrl, getToken } from '../storage/session';
 
@@ -18,7 +19,7 @@ const http = createHttp({
 });
 
 export const api = {
-  login: (account, password) => loginRequest(http, account, password),
+  login: (account, password, shop) => loginRequest(http, account, password, shop),
   findProductByBarcode: (barcode) => findByBarcode(http, barcode),
   getVariant: (id) => getById(http, id),
   recognizeImage: (file) => recognize(http, file),
@@ -42,6 +43,20 @@ export const admin = {
   setPrimaryPhoto: bind(adminApi.setPrimaryPhoto),
   listColors: bind(adminApi.listColors),
 };
+// Don hang va bao cao
+export const orders = {
+  create: bind(orderApi.createOrder),
+  save: bind(orderApi.saveOrder),
+  confirm: bind(orderApi.confirmOrder),
+  remove: bind(orderApi.deleteOrder),
+  get: bind(orderApi.getOrder),
+  list: bind(orderApi.listOrders),
+  updatePayment: bind(orderApi.updatePayment),
+  cancel: bind(orderApi.cancelOrder),
+  searchVariants: bind(orderApi.searchVariants),
+  report: bind(orderApi.getReport),
+};
+export { PAY_OPTIONS, PAY_LABEL, STATUS_LABEL, STATUS_OPTIONS, EMPTY_ORDER_FORM, REPORT_RANGES, orderTotals, validateOrder, buildOrderRequest, reportRange } from './orders';
 export { generateVariants, splitList } from './admin';
 export { buildStockRequest, validateProduct, validateVariant, productToForm, variantToForm, EMPTY_PRODUCT, EMPTY_VARIANT } from './admin';
 

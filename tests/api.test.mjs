@@ -48,9 +48,12 @@ after(() => {
   slowServer.close();
 });
 
+// Id tu BE la chuoi Snowflake lon (> 2^53); mock mo phong bang 4e18 + so thu tu
+const W = (n) => String(4000000000000000000n + BigInt(n));
+
 // ---------- dang nhap ----------
 test('dang nhap dung -> co token, vai tro va danh sach quyen', async () => {
-  const session = await login(client(), 'nhanvien', '123456');
+  const session = await login(client(), 'nhanvien', '123456', 'mei-bee');
   assert.match(session.token, /^mock\./);
   assert.equal(session.user.fullName, 'Nhân viên bán hàng');
   assert.equal(session.user.role, 'EMPLOYEE');
@@ -59,9 +62,19 @@ test('dang nhap dung -> co token, vai tro va danh sach quyen', async () => {
   token = session.token;
 });
 
+test('dang nhap: ma cua hang sai hoac thieu -> loi, id tra ve la chuoi so lon khong mat chinh xac', async () => {
+  await assert.rejects(login(client(), 'nhanvien', '123456', 'shop-khac'), (e) => e.code === 'UNAUTHORIZED');
+  await assert.rejects(login(client(), 'nhanvien', '123456', ''), /Nhập mã cửa hàng/);
+  const s = await login(client(), 'nhanvien', '123456', ' MEI-BEE ');
+  assert.equal(s.user.shop.code, 'mei-bee');
+  assert.equal(typeof s.user.id, 'string');
+  assert.ok(BigInt(s.user.id) > 2n ** 53n, 'id phai lon hon so nguyen an toan cua JS');
+  assert.equal(typeof s.user.shop.id, 'string');
+});
+
 test('dang nhap sai mat khau -> bao loi cua BE, KHONG goi onUnauthorized', async () => {
   unauthorizedCalls = 0;
-  await assert.rejects(login(client(), 'nhanvien', 'sai'), (e) => {
+  await assert.rejects(login(client(), 'nhanvien', 'sai', 'mei-bee'), (e) => {
     assert.ok(e instanceof ApiError);
     assert.equal(e.code, 'UNAUTHORIZED');
     assert.equal(e.message, 'Tài khoản hoặc mật khẩu không đúng.');
@@ -71,13 +84,13 @@ test('dang nhap sai mat khau -> bao loi cua BE, KHONG goi onUnauthorized', async
 });
 
 test('dang nhap bo trong -> bao loi ngay, khong goi mang', async () => {
-  await assert.rejects(login(client({ getBaseUrl: async () => 'http://127.0.0.1:1' }), '  ', ''), /Nhập tài khoản và mật khẩu/);
+  await assert.rejects(login(client({ getBaseUrl: async () => 'http://127.0.0.1:1' }), '  ', '', 'mei-bee'), /Nhập tài khoản và mật khẩu/);
 });
 
 // ---------- tra ma vach ----------
 test('quet ma vach co san pham -> map dung, khong lo gia von', async () => {
   const p = await findProductByBarcode(client(), '8922000001');
-  assert.equal(p.id, 1);
+  assert.equal(p.id, W(1));
   assert.equal(p.name, 'Set len khoá kéo 8922#');
   assert.equal(p.price, 490000, 'gia chinh la gia le');
   assert.deepEqual(p.prices.map((x) => [x.type, x.price]), [['RETAIL', 490000], ['WHOLESALE', 410000]]);
@@ -100,12 +113,12 @@ test('hien cac mau khac cua cung san pham va danh dau mau dang xem', async () =>
 
 test('ma vach dai hon chua ma can tim -> van lay dung san pham', async () => {
   const p = await findProductByBarcode(client(), '8922000001');
-  assert.equal(p.id, 1);
+  assert.equal(p.id, W(1));
 });
 
 test('ma vach co khoang trang thua van khop', async () => {
   const p = await findProductByBarcode(client(), '  8922000002 ');
-  assert.equal(p.id, 2);
+  assert.equal(p.id, W(2));
 });
 
 test('san pham ngung ban (INACTIVE) -> null', async () => {
@@ -119,7 +132,7 @@ test('ma khong co trong he thong -> null (de hien trang Khong tim thay)', async 
 
 test('iOS bao UPC-A 12 so thanh EAN-13 them so 0 -> van khop', async () => {
   const p = await findProductByBarcode(client(), '0036000291452');
-  assert.equal(p.id, 6);
+  assert.equal(p.id, W(6));
 });
 
 test('ma vach co ky tu dac biet duoc ma hoa trong URL', async () => {
@@ -137,7 +150,7 @@ test('san pham chua co anh / mo ta khong lam app loi', async () => {
 });
 
 test('admin (co product.manage) duoc BE tra gia von nhung lop map van bo di', async () => {
-  const admin = await login(client(), 'admin', 'admin123');
+  const admin = await login(client(), 'admin', 'admin123', 'mei-bee');
   const raw = await client({ getToken: async () => admin.token }).get('/api/variants/by-barcode/8922000001');
   assert.equal(raw.costPrice, 300000);
   const empRaw = await client().get('/api/variants/by-barcode/8922000001');
@@ -165,7 +178,7 @@ test('token sai -> cung xu ly nhu het phien', async () => {
 
 test('thieu quyen scan.use -> 403 FORBIDDEN, KHONG dang xuat nguoi dung', async () => {
   unauthorizedCalls = 0;
-  const viewer = await login(client(), 'khach', '123456');
+  const viewer = await login(client(), 'khach', '123456', 'mei-bee');
   await assert.rejects(
     findProductByBarcode(client({ getToken: async () => viewer.token }), '8922000001'),
     (e) => {
@@ -183,7 +196,7 @@ test('may chu tat -> loi NETWORK (khong phai "khong tim thay san pham")', async 
 
 test('may chu cham -> TIMEOUT', async () => {
   // slowServer co kho token rieng, nen dang nhap vao do truoc
-  const slowSession = await login(client({ getBaseUrl: async () => slowUrl }), 'nhanvien', '123456');
+  const slowSession = await login(client({ getBaseUrl: async () => slowUrl }), 'nhanvien', '123456', 'mei-bee');
   await assert.rejects(
     findProductByBarcode(
       client({ getBaseUrl: async () => slowUrl, getToken: async () => slowSession.token, timeoutMs: 100 }),
@@ -247,7 +260,7 @@ test('quet anh: chua chac chan -> 2 ung vien sap theo do giong, anh tuong doi du
   assert.equal(be.image, `${baseUrl}/media/t/mock-be.webp`);
   assert.equal(r.candidates[0].variant.name, 'Set len khoá kéo 8922#');
   assert.equal(r.candidates[0].variant.price, 490000);
-  assert.ok(r.scanEventId > 0);
+  assert.ok(BigInt(r.scanEventId) > 4000000000000000000n);
 });
 
 test('quet anh: chac chan -> confident, lay duoc chi tiet theo id', async () => {
@@ -282,7 +295,7 @@ test('quet anh: dich vu nhan dien tat (503) -> loi SERVER kem thong bao cua BE',
 
 test('quet anh: thieu quyen scan.use -> 403, khong dang xuat', async () => {
   const before = unauthorizedCalls;
-  const s = await login(client({ getToken: async () => null }), 'khach', '123456');
+  const s = await login(client({ getToken: async () => null }), 'khach', '123456', 'mei-bee');
   await assert.rejects(
     recognizeImage(client({ getToken: async () => s.token }), photo('x')),
     (e) => e.code === 'FORBIDDEN',
@@ -292,8 +305,8 @@ test('quet anh: thieu quyen scan.use -> 403, khong dang xuat', async () => {
 
 test('xac nhan ket qua quet anh duoc gui len BE; loi khi xac nhan bi nuot', async () => {
   const r = await recognizeImage(client(), photo('AMBIGUOUS'));
-  await confirmScan(client(), r.scanEventId, 3);
-  assert.deepEqual(server.confirmations.at(-1), { scanEventId: r.scanEventId, variantId: 3 });
+  await confirmScan(client(), r.scanEventId, W(3));
+  assert.deepEqual(server.confirmations.at(-1), { scanEventId: Number(BigInt(r.scanEventId) - 4000000000000000000n), variantId: 3 });
   await confirmScan(client({ getBaseUrl: async () => 'http://127.0.0.1:1' }), r.scanEventId, 3); // khong nem loi
   await confirmScan(client(), null, 3); // khong co id -> bo qua
 });
@@ -310,7 +323,7 @@ let adminToken = null;
 const adminHttp = () => client({ getToken: async () => adminToken });
 
 test('admin: dang nhap co quyen product.manage', async () => {
-  const s = await login(client({ getToken: async () => null }), 'admin', 'admin123');
+  const s = await login(client({ getToken: async () => null }), 'admin', 'admin123', 'mei-bee');
   adminToken = s.token;
   assert.ok(s.user.permissions.includes('product.manage'));
 });
@@ -377,7 +390,7 @@ test('admin: them -> them bien the -> sua gia giu bac gia so luong -> ton kho ->
   // anh (anh he thong tra duong dan tuong doi -> ghep voi may chu)
   const m1 = await adminApi.uploadPhoto(h, p.id, new Blob(['img1']), null);
   const m2 = await adminApi.uploadPhoto(h, p.id, new Blob(['img2']), v.color.id);
-  assert.equal(m1.thumbUrl, `${baseUrl}/media/t/mock${m1.id}.webp`);
+  assert.equal(m1.thumbUrl, `${baseUrl}/media/t/mock${Number(BigInt(m1.id) - 4000000000000000000n)}.webp`);
   assert.equal(m2.colorId, v.color.id);
   await adminApi.setPrimaryPhoto(h, p.id, m1.id);
   p = await adminApi.getProduct(h, p.id);
@@ -459,4 +472,190 @@ test('tai tep len dung XMLHttpRequest khi co (React Native), khong tu dat Conten
   } finally {
     delete globalThis.XMLHttpRequest;
   }
+});
+
+// ---------- don tam, chot don, thanh toan nhap tay, bao cao ----------
+import * as orderApi from '../src/api/orders.js';
+import * as draft from '../src/utils/draft.js';
+
+async function loginAs(account, password) {
+  const s = await login(client(), account, password, 'mei-bee');
+  token = s.token;
+  return s;
+}
+
+test('don tam dang soan: gop dong, chan vuot ton, hang het khong them duoc, nap tu may chu', () => {
+  draft.clearDraft();
+  const item = { id: W(1), name: 'Set', color: 'Xám than', size: 'Free size', sku: 'S1', price: 490000, stock: 2, image: null };
+  assert.equal(draft.getDraft().dirty, false);
+  assert.equal(draft.addItem(item).ok, true);
+  assert.equal(draft.getDraft().dirty, true);
+  assert.equal(draft.addItem(item).ok, true);
+  const over = draft.addItem(item);
+  assert.equal(over.ok, false);
+  assert.equal(over.reason, 'stock');
+  assert.equal(draft.addItem({ ...item, id: W(3), stock: 0 }).reason, 'out');
+  assert.equal(draft.getDraft().items.length, 1);
+  assert.equal(draft.getDraft().items[0].quantity, 2);
+  draft.setQuantity(W(1), 99);
+  assert.equal(draft.getDraft().items[0].quantity, 2); // khong vuot ton
+  draft.setForm({ customerName: 'Lan' });
+  assert.equal(draft.getDraft().form.customerName, 'Lan');
+  draft.removeItem(W(1));
+  assert.equal(draft.getDraft().items.length, 0);
+  draft.loadFromOrder({
+    id: W(7), code: 'TAM0007', paymentStatus: 'PARTIAL', paid: 100000, discount: 5000, customerName: 'An', customerPhone: null, note: null,
+    items: [{ variantId: W(1), name: 'Set', color: 'Be', size: 'M', sku: 'S', unitPrice: 490000, quantity: 2, stock: 9 }],
+  });
+  const d = draft.getDraft();
+  assert.equal(d.orderId, W(7));
+  assert.equal(d.dirty, false);
+  assert.equal(d.form.paid, '100000');
+  assert.equal(d.items[0].price, 490000);
+  draft.clearDraft();
+  assert.equal(draft.getDraft().orderId, null);
+});
+
+test('kiem tra va dung yeu cau luu / chot don', () => {
+  const items = [{ id: W(1), name: 'Set', quantity: 2, price: 490000 }];
+  const base = orderApi.EMPTY_ORDER_FORM;
+  assert.equal(orderApi.validateOrder([], base), 'Đơn chưa có sản phẩm.');
+  assert.equal(orderApi.validateOrder([], base, { confirm: false }), null); // luu don tam rong duoc
+  assert.match(orderApi.validateOrder([{ ...items[0], price: null }], base, { confirm: false }), /chưa có giá/);
+  assert.match(orderApi.validateOrder(items, { ...base, discount: '2.000.000' }), /Giảm giá lớn hơn/);
+  assert.match(orderApi.validateOrder(items, { ...base, paymentStatus: 'PARTIAL', paid: '' }), /Trả một phần/);
+  assert.match(orderApi.validateOrder(items, { ...base, paymentStatus: 'PARTIAL', paid: '980.000' }), /Trả một phần/);
+  assert.equal(orderApi.validateOrder(items, { ...base, paymentStatus: 'PARTIAL', paid: '300.000' }), null);
+  const form = { ...base, paymentStatus: 'PARTIAL', paid: '300.000', discount: '30.000', customerName: ' Lan ' };
+  const staff = orderApi.buildOrderRequest(items, form, { canPrice: false, confirm: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(staff.items)), [{ variantId: W(1), quantity: 2 }]); // nhan vien khong gui gia
+  assert.equal(staff.confirm, true);
+  assert.equal(staff.paidAmount, 300000);
+  assert.equal(staff.customerName, 'Lan');
+  const admin = orderApi.buildOrderRequest(items, form, { canPrice: true });
+  assert.deepEqual(admin.items, [{ variantId: W(1), quantity: 2, unitPrice: 490000 }]);
+  assert.equal(admin.confirm, false);
+  assert.deepEqual(orderApi.orderTotals(items, { ...base, discount: '30.000' }), { subtotal: 980000, discount: 30000, total: 950000 });
+});
+
+test('khoang ngay bao cao', () => {
+  const now = new Date(2026, 9, 14); // 14/10/2026
+  assert.deepEqual(orderApi.reportRange('today', now), { from: '2026-10-14', to: '2026-10-14' });
+  assert.deepEqual(orderApi.reportRange('7d', now), { from: '2026-10-08', to: '2026-10-14' });
+  assert.deepEqual(orderApi.reportRange('month', now), { from: '2026-10-01', to: '2026-10-14' });
+  assert.deepEqual(orderApi.reportRange('30d', now), { from: '2026-09-15', to: '2026-10-14' });
+});
+
+test('nhan vien: don tam khong tru kho, luu / sua / chot / xoa, khong dat duoc gia', async () => {
+  await loginAs('nhanvien', '123456');
+  const http = client();
+  // Gui gia 1 dong (nhan vien khong co quyen) -> bi bo qua, lay gia bang gia 490.000
+  const d1 = await orderApi.createOrder(http, {
+    items: [{ variantId: W(1), quantity: 2, unitPrice: 1 }, { variantId: W(1), quantity: 1 }],
+    discount: 30000, paymentStatus: 'PARTIAL', paidAmount: 500000, customerName: 'Chị Lan',
+  });
+  assert.match(d1.code, /^TAM\d{4}$/);
+  assert.equal(d1.status, 'DRAFT');
+  assert.equal(d1.items.length, 1); // gop dong trung
+  assert.equal(d1.items[0].quantity, 3);
+  assert.equal(d1.items[0].unitPrice, 490000);
+  assert.equal(d1.total, 1440000);
+  assert.equal(d1.owed, 940000);
+  assert.equal(d1.profit, null);
+  assert.equal(d1.items[0].costPrice, null);
+  assert.equal(d1.items[0].stock, 12);
+  let hits = await orderApi.searchVariants(http, '8922-XAM');
+  assert.equal(hits[0].quantity, 12); // don tam chua tru kho
+
+  // Don tam co the vuot ton luc soan, chi chot moi bi chan
+  const saved = await orderApi.saveOrder(http, d1.id, { items: [{ variantId: W(1), quantity: 99 }], paymentStatus: 'UNPAID' });
+  assert.equal(saved.items[0].quantity, 99);
+  await assert.rejects(orderApi.confirmOrder(http, d1.id), (e) => e.status === 409 && /Không đủ tồn kho/.test(e.message));
+  const again = await orderApi.getOrder(http, d1.id);
+  assert.equal(again.status, 'DRAFT'); // chot loi thi van la don tam
+  hits = await orderApi.searchVariants(http, '8922-XAM');
+  assert.equal(hits[0].quantity, 12);
+
+  // Sua lai cho hop le roi chot (luu + chot cung luc)
+  const done = await orderApi.saveOrder(http, d1.id, { items: [{ variantId: W(1), quantity: 3 }], discount: 30000, paymentStatus: 'PARTIAL', paidAmount: 500000, customerName: 'Chị Lan', confirm: true });
+  assert.equal(done.status, 'COMPLETED');
+  assert.match(done.code, /^DH\d{6}$/);
+  hits = await orderApi.searchVariants(http, '8922-XAM');
+  assert.equal(hits[0].quantity, 9);
+  // Da chot thi khong sua / xoa duoc nua
+  await assert.rejects(orderApi.saveOrder(http, d1.id, { items: [] }), (e) => e.status === 409);
+  await assert.rejects(orderApi.deleteOrder(http, d1.id), (e) => e.status === 409);
+
+  // Chot ngay khi tao; don rong khong chot duoc; het hang bi chan
+  await assert.rejects(orderApi.createOrder(http, { items: [], confirm: true }), (e) => e.status === 400);
+  await assert.rejects(orderApi.createOrder(http, { items: [{ variantId: W(3), quantity: 1 }], confirm: true }), (e) => e.status === 409);
+  await assert.rejects(orderApi.createOrder(http, { items: [{ variantId: W(1), quantity: 1 }], paymentStatus: 'PARTIAL' }), (e) => e.status === 400);
+
+  // Tao roi xoa don tam
+  const d2 = await orderApi.createOrder(http, { items: [{ variantId: W(1), quantity: 1 }] });
+  assert.equal(d2.status, 'DRAFT');
+  await assert.rejects(orderApi.cancelOrder(http, d2.id), (e) => e.status === 403); // nhan vien khong huy
+  await orderApi.deleteOrder(http, d2.id);
+  await assert.rejects(orderApi.getOrder(http, d2.id), (e) => e.status === 404);
+
+  // Thanh toan nhap tay tren don da chot
+  const paid = await orderApi.updatePayment(http, done.id, { paymentStatus: 'PAID' });
+  assert.equal(paid.paid, 1440000);
+  assert.equal(paid.owed, 0);
+  await assert.rejects(orderApi.getReport(http, orderApi.reportRange('today')), (e) => e.status === 403);
+  const list = await orderApi.listOrders(http, {});
+  assert.equal(list.total, 1);
+  assert.equal((await orderApi.listOrders(http, { status: 'DRAFT' })).total, 0);
+});
+
+test('nhan vien khong quan ly duoc san pham, admin moi them / sua / xoa', async () => {
+  await loginAs('nhanvien', '123456');
+  const http = client();
+  const product = { styleCode: 'Z1', name: 'Áo thử', variants: [] };
+  await assert.rejects(http.post('/api/admin/products', product), (e) => e.status === 403);
+  await assert.rejects(http.put(`/api/admin/products/${W(1)}`, product), (e) => e.status === 403);
+  await assert.rejects(http.del(`/api/admin/products/${W(1)}`), (e) => e.status === 403);
+  await loginAs('admin', 'admin123');
+  const created = await client().post('/api/admin/products', product);
+  assert.equal(created.styleCode, 'Z1');
+  await client().del(`/api/admin/products/${created.id}`);
+});
+
+test('admin: dat gia tung dong, thay moi don + lai lo, huy don hoan kho, bao cao bo don tam va don huy', async () => {
+  await loginAs('admin', 'admin123');
+  const http = client();
+  // admin dat gia 200.000 < gia von 300.000 -> ban lo
+  const loss = await orderApi.createOrder(http, { items: [{ variantId: W(1), quantity: 2, unitPrice: 200000 }], paymentStatus: 'PAID', confirm: true });
+  assert.equal(loss.items[0].unitPrice, 200000);
+  assert.equal(loss.profit, -200000);
+  assert.equal(loss.items[0].costPrice, 300000);
+  // mot don tam khong duoc tinh vao doanh thu
+  const tmp = await orderApi.createOrder(http, { items: [{ variantId: W(1), quantity: 1 }] });
+  assert.equal(tmp.status, 'DRAFT');
+
+  const all = await orderApi.listOrders(http, {});
+  assert.equal(all.total, 3); // don cua nhan vien + don ban lo + don tam
+  assert.equal((await orderApi.listOrders(http, { status: 'DRAFT' })).total, 1);
+  assert.equal((await orderApi.listOrders(http, { q: 'lan' })).total, 1);
+
+  const range = orderApi.reportRange('today');
+  const rep = await orderApi.getReport(http, range);
+  assert.equal(rep.orders, 2);
+  assert.equal(rep.revenue, 1440000 + 400000);
+  assert.equal(rep.cogs, 5 * 300000);
+  assert.equal(rep.profit, 340000);
+  assert.equal(rep.daily.length, 1);
+  assert.equal(rep.top[0].quantity, 5);
+
+  await assert.rejects(orderApi.cancelOrder(http, tmp.id), (e) => e.status === 409); // don tam phai xoa, khong huy
+  const cancelled = await orderApi.cancelOrder(http, loss.id);
+  assert.equal(cancelled.status, 'CANCELLED');
+  await assert.rejects(orderApi.cancelOrder(http, loss.id), (e) => e.status === 409);
+  await assert.rejects(orderApi.updatePayment(http, loss.id, { paymentStatus: 'UNPAID' }), (e) => e.status === 409);
+  const hits = await orderApi.searchVariants(http, '8922-XAM');
+  assert.equal(hits[0].quantity, 9); // 12 - 3 (don 1) - 2 + 2 (huy)
+  const rep2 = await orderApi.getReport(http, range);
+  assert.equal(rep2.orders, 1);
+  assert.equal(rep2.revenue, 1440000);
+  await assert.rejects(orderApi.getOrder(http, W(999)), (e) => e.status === 404);
 });

@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { api, setUnauthorizedHandler } from '../api';
 import { normalizeServerUrl } from '../api/serverUrl';
 import { ApiError } from '../api/http';
-import { clearSession, loadSession, saveServerUrl, saveSession } from '../storage/session';
+import { clearSession, loadSession, saveServerUrl, saveShopCode, saveSession } from '../storage/session';
 
 const AuthContext = createContext(null);
 
@@ -41,14 +41,15 @@ export function AuthProvider({ children }) {
     return () => setUnauthorizedHandler(null);
   }, [signOut]);
 
-  const signIn = useCallback(async ({ serverUrl, account, password }) => {
+  const signIn = useCallback(async ({ serverUrl, shop, account, password }) => {
     const normalized = normalizeServerUrl(serverUrl);
     if (!normalized) {
       throw new ApiError('Địa chỉ máy chủ không hợp lệ. Ví dụ: 192.168.1.20:8080', { code: 'HTTP' });
     }
     await saveServerUrl(normalized);
-    const session = await api.login(account, password);
+    const session = await api.login(account, password, shop);
     await saveSession(session);
+    await saveShopCode((shop || '').trim().toLowerCase()); // nho de lan sau khong phai go lai
     setUser(session.user);
     setStatus('signedIn');
   }, []);

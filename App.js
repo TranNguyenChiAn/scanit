@@ -15,12 +15,23 @@ import CandidatesScreen from './src/screens/CandidatesScreen';
 import AdminProductsScreen from './src/screens/AdminProductsScreen';
 import AdminProductScreen from './src/screens/AdminProductScreen';
 import AdminVariantScreen from './src/screens/AdminVariantScreen';
+import OrderEditScreen from './src/screens/OrderEditScreen';
+import OrderPickScreen from './src/screens/OrderPickScreen';
+import OrdersScreen from './src/screens/OrdersScreen';
+import OrderDetailScreen from './src/screens/OrderDetailScreen';
+import ReportScreen from './src/screens/ReportScreen';
+import { clearDraft } from './src/utils/draft';
 import { colors } from './src/theme/theme';
 
 const Stack = createNativeStackNavigator();
 
 function Routes() {
   const { status } = useAuth();
+
+  // Dang xuat / het phien: bo don tam dang soan de nguoi dung sau khong thay
+  React.useEffect(() => {
+    if (status !== 'signedIn') clearDraft();
+  }, [status]);
 
   if (status === 'loading') {
     return (
@@ -51,6 +62,11 @@ function Routes() {
           <Stack.Screen name="AdminProducts" component={AdminProductsScreen} />
           <Stack.Screen name="AdminProduct" component={AdminProductScreen} />
           <Stack.Screen name="AdminVariant" component={AdminVariantScreen} />
+          <Stack.Screen name="OrderEdit" component={OrderEditScreen} />
+          <Stack.Screen name="OrderPick" component={OrderPickScreen} />
+          <Stack.Screen name="Orders" component={OrdersScreen} />
+          <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
+          <Stack.Screen name="Report" component={ReportScreen} />
         </>
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} />

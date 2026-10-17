@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const TOKEN_KEY = 'scanit.token';
 const USER_KEY = 'scanit:user';
 const SERVER_KEY = 'scanit:serverUrl';
+const SHOP_KEY = 'scanit:shopCode';
 
 const DEFAULT_SERVER = process.env.EXPO_PUBLIC_API_URL || '';
 
@@ -27,6 +28,18 @@ export async function getServerUrl() {
 
 export async function saveServerUrl(url) {
   await AsyncStorage.setItem(SERVER_KEY, url);
+}
+
+export async function getShopCode() {
+  try {
+    return (await AsyncStorage.getItem(SHOP_KEY)) || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function saveShopCode(code) {
+  await AsyncStorage.setItem(SHOP_KEY, code);
 }
 
 export async function loadSession() {

@@ -6,10 +6,23 @@ import { colors, type, spacing, radius } from '../theme/theme';
 import ProductCard from '../components/ProductCard';
 import { getHistory } from '../utils/history';
 import { useAuth } from '../auth/AuthContext';
+import { getDraft, itemCount, startNew } from '../utils/draft';
+import { useDraft } from '../utils/useDraft';
+
+function MenuCard({ title, sub, onPress }) {
+  return (
+    <Pressable style={({ pressed }) => [styles.manageButton, pressed && styles.scanButtonPressed]} onPress={onPress}>
+      <Text style={styles.manageTitle}>{title}</Text>
+      <Text style={styles.manageSub}>{sub}</Text>
+    </Pressable>
+  );
+}
 
 export default function HomeScreen({ navigation }) {
   const { user, signOut } = useAuth();
   const [history, setHistory] = useState([]);
+  const draft = useDraft();
+  const can = (p) => !!user?.permissions?.includes(p);
 
   useFocusEffect(
     useCallback(() => {
@@ -57,14 +70,28 @@ export default function HomeScreen({ navigation }) {
         </View>
       </Pressable>
 
-      {user?.permissions?.includes('product.manage') ? (
+      {can('order.create') ? (
         <Pressable
-          style={({ pressed }) => [styles.manageButton, pressed && styles.scanButtonPressed]}
-          onPress={() => navigation.navigate('AdminProducts')}
+          style={({ pressed }) => [styles.orderButton, pressed && styles.scanButtonPressed]}
+          onPress={() => {
+            if (!getDraft().dirty) startNew();
+            navigation.navigate('OrderEdit', {});
+          }}
         >
-          <Text style={styles.manageTitle}>Quản lý sản phẩm</Text>
-          <Text style={styles.manageSub}>Thêm, sửa, xoá sản phẩm, giá, tồn kho và ảnh</Text>
+          <Text style={styles.orderTitle}>Tạo đơn</Text>
+          <Text style={styles.orderSub}>
+            {draft.dirty && draft.items.length ? `Đang soạn ${itemCount(draft.items)} sản phẩm` : 'Soạn đơn nhanh, lưu đơn tạm hoặc chốt luôn'}
+          </Text>
         </Pressable>
+      ) : null}
+      {can('order.view') ? (
+        <MenuCard title="Đơn hàng" sub="Đơn tạm, đơn đã bán, cập nhật thanh toán" onPress={() => navigation.navigate('Orders')} />
+      ) : null}
+      {can('product.manage') ? (
+        <MenuCard title="Quản lý sản phẩm" sub="Thêm, sửa, xoá sản phẩm, giá, tồn kho và ảnh" onPress={() => navigation.navigate('AdminProducts')} />
+      ) : null}
+      {can('report.view') ? (
+        <MenuCard title="Báo cáo doanh thu" sub="Doanh thu, giá vốn, lãi lỗ theo ngày" onPress={() => navigation.navigate('Report')} />
       ) : null}
 
       <View style={styles.historyHeader}>
@@ -114,7 +141,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.md,
   },
   scanButtonPressed: { opacity: 0.9 },
   scanIconRing: {
@@ -137,12 +164,15 @@ const styles = StyleSheet.create({
   scanTitle: { color: colors.white, fontSize: 18, fontWeight: '700' },
   scanSubtitle: { color: '#A9B1C3', fontSize: 13, marginTop: 2 },
   manageButton: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, marginTop: -spacing.md,
-    marginBottom: spacing.xl, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg,
+    marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border,
   },
+  orderButton: { backgroundColor: colors.accent, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md },
+  orderTitle: { fontSize: 18, fontWeight: '700', color: colors.ink },
+  orderSub: { fontSize: 13, color: colors.ink, opacity: 0.75, marginTop: 2 },
   manageTitle: { fontSize: 17, fontWeight: '700', color: colors.ink },
   manageSub: { fontSize: 13, color: colors.inkSoft, marginTop: 2 },
-  historyHeader: { marginBottom: spacing.sm },
+  historyHeader: { marginTop: spacing.sm, marginBottom: spacing.sm },
   list: { paddingBottom: spacing.xl },
   emptyWrap: { paddingVertical: spacing.lg },
   emptyText: { ...type.body },

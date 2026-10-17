@@ -7,10 +7,21 @@
 // Tai khoan thu: nhanvien / 123456  (EMPLOYEE),  admin / admin123  (ADMIN)
 
 const http = require('http');
+
+// Giong BE that: moi id tra ve dang CHUOI va lon hon 2^53 (Snowflake), de bat loi mat chinh xac o app.
+// Du lieu trong bo nho van dung so nho; chuyen qua lai o day.
+const ID_BASE = 4000000000000000000n;
+const wireId = (n) => String(ID_BASE + BigInt(n));
+const fromWire = (s) => {
+  const t = String(s);
+  return /^\d{16,}$/.test(t) ? Number(BigInt(t) - ID_BASE) : Number(t);
+};
+const isIdKey = (k) => k === 'id' || /Id$/.test(k);
+const SHOP = { id: 1, code: 'mei-bee', name: 'MEI.BEE studio' };
 const { randomBytes } = require('crypto');
 
 const EMPLOYEE_PERMS = ['customer.view', 'order.create', 'order.view', 'product.view', 'scan.use', 'stock.view'];
-const ADMIN_PERMS = [...EMPLOYEE_PERMS, 'debt.collect', 'debt.view', 'product.manage', 'report.view', 'role.manage', 'stock.adjust', 'user.manage'].sort();
+const ADMIN_PERMS = [...EMPLOYEE_PERMS, 'order.cancel', 'order.price', 'debt.collect', 'debt.view', 'product.manage', 'report.view', 'role.manage', 'stock.adjust', 'user.manage'].sort();
 
 const USERS = [
   { id: 1, account: 'admin', password: 'admin123', fullName: 'Quản trị viên', username: 'admin', role: 'ADMIN', permissions: ADMIN_PERMS },
@@ -79,10 +90,17 @@ function createServer({ slowMs = 0 } = {}) {
   let scanEvents = 100;
   const adminState = { products: [], nextProduct: 1, nextVariant: 500, nextMedia: 1, nextSkuBase: '' };
   const confirmations = [];
+  // Don hang: ton kho rieng cua tung may chu gia lap, de test khong lam lech du lieu cua test khac
+  const stock = new Map(VARIANTS.map((v) => [v.id, v.stock.quantity]));
+  const orders = [];
+  let saleSeq = 0;
+  let draftSeq = 0;
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const localDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
   const send = (res, status, body) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(body === undefined ? '' : JSON.stringify(body));
+    res.end(body === undefined ? '' : JSON.stringify(body, (k, v) => (typeof v === 'number' && isIdKey(k) ? wireId(v) : v)));
   };
   const err = (res, status, code, message) => send(res, status, { code, message });
 
@@ -111,19 +129,225 @@ function createServer({ slowMs = 0 } = {}) {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/auth/login') {
-      const { account, password } = await readBody(req);
+      const { shop, account, password } = await readBody(req);
       const user = USERS.find((u) => u.account === account);
-      if (!user || user.password !== password) return err(res, 401, 'BAD_CREDENTIALS', 'Tài khoản hoặc mật khẩu không đúng.');
+      if (String(shop || '').trim().toLowerCase() !== SHOP.code || !user || user.password !== password) return err(res, 401, 'BAD_CREDENTIALS', 'Tài khoản hoặc mật khẩu không đúng.');
       const token = `mock.${randomBytes(12).toString('hex')}`;
       sessions.set(token, user);
       const { password: _p, account: _a, ...view } = user;
-      return send(res, 200, { token, user: view });
+      return send(res, 200, { token, user: { ...view, shop: SHOP } });
     }
 
     const bearer = req.headers.authorization || '';
     const user = sessions.get(bearer.startsWith('Bearer ') ? bearer.slice(7) : '');
     if (!user) return err(res, 401, 'UNAUTHORIZED', 'Phiên đăng nhập đã hết hạn. Đăng nhập lại.');
 
+
+
+    // ---- Don hang va bao cao (mo phong OrderController / ReportController cua BE) ----
+    const seesAll = user.permissions.includes('report.view');
+    const forbid = () => err(res, 403, 'FORBIDDEN', 'Bạn không có quyền thực hiện thao tác này.');
+    const payOf = (status, paid, total) => {
+      const st = String(status || 'UNPAID').toUpperCase();
+      if (!['UNPAID', 'PARTIAL', 'PAID'].includes(st)) return { error: 'Trạng thái thanh toán không hợp lệ.' };
+      if (st === 'PAID') return { status: st, paid: total };
+      if (st === 'UNPAID') return { status: st, paid: 0 };
+      if (!paid || paid <= 0 || paid >= total) return { error: 'Thanh toán một phần: nhập số tiền đã trả lớn hơn 0 và nhỏ hơn tổng đơn.' };
+      return { status: st, paid };
+    };
+    const orderCost = (o) => o.items.reduce((s, i) => s + i.quantity * i.costPrice, 0);
+    const orderView = (o) => ({
+      id: o.id, code: o.code, orderType: 'RETAIL', status: o.status, paymentStatus: o.paymentStatus,
+      subtotal: o.subtotal, discount: o.discount, total: o.total, paid: o.paid, owed: Math.max(o.total - o.paid, 0),
+      customerName: o.customerName, customerPhone: o.customerPhone, note: o.note, staffName: o.staffName,
+      orderedAt: o.orderedAt, itemCount: o.items.reduce((n, i) => n + i.quantity, 0),
+      items: o.items.map((i) => {
+        const v = VARIANTS.find((x) => x.id === i.variantId);
+        return {
+          variantId: i.variantId, sku: v.sku, productName: v.product.name, color: v.color.name, size: v.size.name,
+          quantity: i.quantity, unitPrice: i.unitPrice, lineTotal: i.quantity * i.unitPrice, costPrice: seesAll ? i.costPrice : null, stock: stock.get(i.variantId),
+        };
+      }),
+      profit: seesAll ? o.total - orderCost(o) : null,
+    });
+    const visible = () => orders.filter((o) => o.status !== 'DELETED' && (seesAll || o.staffId === user.id));
+
+    if (url.pathname === '/api/variants' && req.method === 'GET') {
+      if (!user.permissions.includes('product.view')) return forbid();
+      const q = (url.searchParams.get('q') || '').toLowerCase();
+      const items = VARIANTS.filter((v) => v.status === 'ACTIVE' && (!q || [v.sku, v.barcode, v.product.name, v.product.styleCode].some((x) => String(x || '').toLowerCase().includes(q))))
+        .map((v) => ({ ...summaryOf(v), quantity: stock.get(v.id) }));
+      return send(res, 200, { items, page: 0, size: 30, total: items.length });
+    }
+
+    // Tinh dong hang + thanh toan tu yeu cau. Gia: chi nguoi co order.price moi dat duoc, con lai theo bang gia.
+    const buildContent = (b) => {
+      const merged = new Map();
+      for (const l of b.items || []) {
+        const v = VARIANTS.find((x) => x.id === fromWire(l.variantId) && x.status === 'ACTIVE');
+        if (!v) return { error: 'Có sản phẩm đã ngừng bán hoặc không tồn tại, hãy kiểm tra lại đơn.' };
+        if (!(l.quantity >= 1)) return { error: 'Số lượng tối thiểu là 1' };
+        const m = merged.get(v.id) || { v, quantity: 0, price: user.permissions.includes('order.price') ? l.unitPrice : undefined };
+        m.quantity += l.quantity;
+        merged.set(v.id, m);
+      }
+      const lines = [];
+      for (const { v, quantity, price } of merged.values()) {
+        const unitPrice = price ?? (v.prices.find((p) => p.type === 'RETAIL') || {}).price;
+        if (unitPrice === undefined || unitPrice === null) return { error: `Chưa có giá bán cho ${v.product.name}.` };
+        lines.push({ variantId: v.id, quantity, unitPrice, costPrice: v.costPrice });
+      }
+      const subtotal = lines.reduce((s2, l) => s2 + l.quantity * l.unitPrice, 0);
+      const discount = b.discount || 0;
+      if (discount > subtotal) return { error: 'Giảm giá không được lớn hơn tổng tiền hàng.' };
+      const total = subtotal - discount;
+      const pay = payOf(b.paymentStatus, b.paidAmount, total);
+      if (pay.error) return { error: pay.error };
+      return { lines, subtotal, discount, total, pay };
+    };
+    const applyContent = (o, b, c) => {
+      Object.assign(o, {
+        items: c.lines, subtotal: c.subtotal, discount: c.discount, total: c.total, paid: c.pay.paid, paymentStatus: c.pay.status,
+        customerName: b.customerName || null, customerPhone: b.customerPhone || null, note: b.note || null,
+      });
+    };
+    // Chot don tam: tru kho, doi ma. Tra ve chuoi loi neu khong chot duoc (khong thay doi gi).
+    const finalize = (o) => {
+      if (!o.items.length) return { status: 400, code: 'VALIDATION', message: 'Đơn chưa có sản phẩm.' };
+      for (const l of o.items) {
+        const v = VARIANTS.find((x) => x.id === l.variantId);
+        if (stock.get(v.id) < l.quantity) return { status: 409, code: 'CONFLICT', message: `Không đủ tồn kho: ${v.product.name} ${v.color.name}/${v.size.name} (còn ${stock.get(v.id)}).` };
+      }
+      o.items.forEach((l) => stock.set(l.variantId, stock.get(l.variantId) - l.quantity));
+      o.status = 'COMPLETED';
+      o.code = `DH${String(++saleSeq).padStart(6, '0')}`;
+      o.orderedAt = new Date().toISOString();
+      return null;
+    };
+
+    if (url.pathname === '/api/orders' && req.method === 'POST') {
+      if (!user.permissions.includes('order.create')) return forbid();
+      const b = await readBody(req);
+      const c = buildContent(b);
+      if (c.error) return err(res, 400, 'VALIDATION', c.error);
+      const o = {
+        id: orders.length + 1, code: `TAM${String(++draftSeq).padStart(4, '0')}`, status: 'DRAFT', staffId: user.id, staffName: user.fullName,
+        orderedAt: new Date().toISOString(),
+      };
+      applyContent(o, b, c);
+      if (b.confirm) {
+        const f = finalize(o);
+        if (f) { draftSeq -= 1; return err(res, f.status, f.code, f.message); }
+      }
+      orders.push(o);
+      return send(res, 201, orderView(o));
+    }
+
+    if (url.pathname === '/api/orders' && req.method === 'GET') {
+      if (!user.permissions.includes('order.view')) return forbid();
+      const q = (url.searchParams.get('q') || '').toLowerCase();
+      const st = url.searchParams.get('status') || '';
+      const pm = url.searchParams.get('payment') || '';
+      const list = visible().filter((o) => (!st || o.status === st) && (!pm || o.paymentStatus === pm)
+        && (!q || o.code.toLowerCase().includes(q) || String(o.customerName || '').toLowerCase().includes(q) || String(o.customerPhone || '').includes(q)))
+        .sort((a, b) => b.id - a.id);
+      const items = list.map((o) => ({
+        id: o.id, code: o.code, status: o.status, paymentStatus: o.paymentStatus, total: o.total, paid: o.paid,
+        itemCount: o.items.reduce((n, i) => n + i.quantity, 0), customerName: o.customerName, staffName: o.staffName, orderedAt: o.orderedAt,
+      }));
+      return send(res, 200, { items, page: 0, size: 50, total: items.length });
+    }
+
+    const orderRoute = url.pathname.match(/^\/api\/orders\/(\d+)(\/payment|\/cancel|\/confirm)?$/);
+    if (orderRoute) {
+      const o = visible().find((x) => x.id === fromWire(orderRoute[1]));
+      const sub = orderRoute[2];
+      if (req.method === 'GET' && !sub) {
+        if (!user.permissions.includes('order.view')) return forbid();
+        return o ? send(res, 200, orderView(o)) : err(res, 404, 'NOT_FOUND', 'Không tìm thấy đơn hàng.');
+      }
+      if (req.method === 'PUT' && !sub) {
+        if (!user.permissions.includes('order.create')) return forbid();
+        if (!o) return err(res, 404, 'NOT_FOUND', 'Không tìm thấy đơn hàng.');
+        if (o.status !== 'DRAFT') return err(res, 409, 'CONFLICT', 'Chỉ sửa được đơn tạm.');
+        const b = await readBody(req);
+        const c = buildContent(b);
+        if (c.error) return err(res, 400, 'VALIDATION', c.error);
+        const snapshot = { ...o };
+        applyContent(o, b, c);
+        if (b.confirm) {
+          const f = finalize(o);
+          if (f) { Object.assign(o, snapshot); return err(res, f.status, f.code, f.message); }
+        }
+        return send(res, 200, orderView(o));
+      }
+      if (req.method === 'POST' && sub === '/confirm') {
+        if (!user.permissions.includes('order.create')) return forbid();
+        if (!o) return err(res, 404, 'NOT_FOUND', 'Không tìm thấy đơn hàng.');
+        if (o.status !== 'DRAFT') return err(res, 409, 'CONFLICT', 'Đơn này không còn là đơn tạm.');
+        const f = finalize(o);
+        return f ? err(res, f.status, f.code, f.message) : send(res, 200, orderView(o));
+      }
+      if (req.method === 'DELETE' && !sub) {
+        if (!user.permissions.includes('order.create')) return forbid();
+        if (!o) return err(res, 404, 'NOT_FOUND', 'Không tìm thấy đơn hàng.');
+        if (o.status !== 'DRAFT') return err(res, 409, 'CONFLICT', 'Chỉ xoá được đơn tạm. Đơn đã chốt thì huỷ đơn.');
+        o.status = 'DELETED';
+        return send(res, 204);
+      }
+      if (req.method === 'PATCH' && sub === '/payment') {
+        if (!user.permissions.includes('order.create')) return forbid();
+        if (!o) return err(res, 404, 'NOT_FOUND', 'Không tìm thấy đơn hàng.');
+        if (o.status === 'CANCELLED') return err(res, 409, 'CONFLICT', 'Đơn đã huỷ, không cập nhật thanh toán.');
+        const b = await readBody(req);
+        const pay = payOf(b.paymentStatus, b.paidAmount, o.total);
+        if (pay.error) return err(res, 400, 'VALIDATION', pay.error);
+        o.paymentStatus = pay.status;
+        o.paid = pay.paid;
+        return send(res, 200, orderView(o));
+      }
+      if (req.method === 'POST' && sub === '/cancel') {
+        if (!user.permissions.includes('order.cancel')) return forbid();
+        if (!o) return err(res, 404, 'NOT_FOUND', 'Không tìm thấy đơn hàng.');
+        if (o.status === 'CANCELLED') return err(res, 409, 'CONFLICT', 'Đơn này đã được huỷ trước đó.');
+        if (o.status === 'DRAFT') return err(res, 409, 'CONFLICT', 'Đơn tạm chưa trừ kho nên không huỷ, hãy xoá đơn tạm.');
+        o.items.forEach((i) => stock.set(i.variantId, stock.get(i.variantId) + i.quantity));
+        o.status = 'CANCELLED';
+        return send(res, 200, orderView(o));
+      }
+    }
+
+    if (url.pathname === '/api/admin/reports/summary' && req.method === 'GET') {
+      if (!user.permissions.includes('report.view')) return forbid();
+      const today = new Date();
+      const to = url.searchParams.get('to') || localDate(today);
+      const from = url.searchParams.get('from') || `${to.slice(0, 8)}01`;
+      if (from > to) return err(res, 400, 'VALIDATION', 'Ngày bắt đầu phải trước ngày kết thúc.');
+      const live = orders.filter((o) => o.status === 'COMPLETED' && localDate(new Date(o.orderedAt)) >= from && localDate(new Date(o.orderedAt)) <= to);
+      const days = new Map();
+      for (let d = new Date(`${from}T00:00:00`); localDate(d) <= to; d.setDate(d.getDate() + 1)) days.set(localDate(d), { orders: 0, revenue: 0, cogs: 0 });
+      live.forEach((o) => {
+        const d = days.get(localDate(new Date(o.orderedAt)));
+        d.orders += 1; d.revenue += o.total; d.cogs += orderCost(o);
+      });
+      const revenue = live.reduce((s, o) => s + o.total, 0);
+      const cogs = live.reduce((s, o) => s + orderCost(o), 0);
+      const paid = live.reduce((s, o) => s + o.paid, 0);
+      const byProduct = new Map();
+      live.forEach((o) => o.items.forEach((i) => {
+        const v = VARIANTS.find((x) => x.id === i.variantId);
+        const t = byProduct.get(v.product.id) || { productId: v.product.id, name: v.product.name, quantity: 0, revenue: 0, profit: 0 };
+        t.quantity += i.quantity; t.revenue += i.quantity * i.unitPrice; t.profit += i.quantity * (i.unitPrice - i.costPrice);
+        byProduct.set(v.product.id, t);
+      }));
+      return send(res, 200, {
+        from, to, orders: live.length, itemsSold: live.reduce((n, o) => n + o.items.reduce((m, i) => m + i.quantity, 0), 0),
+        revenue, cogs, profit: revenue - cogs, marginPct: revenue ? Math.round(((revenue - cogs) * 1000) / revenue) / 10 : 0,
+        paid, unpaid: Math.max(revenue - paid, 0), discount: live.reduce((s, o) => s + o.discount, 0),
+        daily: [...days].map(([date, d]) => ({ date, orders: d.orders, revenue: d.revenue, profit: d.revenue - d.cogs })),
+        top: [...byProduct.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 10),
+      });
+    }
 
     // ---- Quan tri san pham (can product.manage). Du lieu trong bo nho, mo phong hop dong /api/admin/* cua BE ----
     if (url.pathname.startsWith('/api/admin/')) {
@@ -136,9 +360,9 @@ function createServer({ slowMs = 0 } = {}) {
         season: p.season, targetGender: null, productType: p.productType, components: p.components, status: p.status,
         categories: p.categories, variants: p.variants, media: p.media,
       });
-      const mustProduct = (id) => live().find((p) => p.id === Number(id));
+      const mustProduct = (id) => live().find((p) => p.id === fromWire(id));
       const mustVariant = (id) => {
-        for (const p of live()) { const v = p.variants.find((x) => x.id === Number(id) && x.status === 'ACTIVE'); if (v) return [p, v]; }
+        for (const p of live()) { const v = p.variants.find((x) => x.id === fromWire(id) && x.status === 'ACTIVE'); if (v) return [p, v]; }
         return [];
       };
       const valid = (b) => (!b.styleCode || !b.name ? 'Thiếu mã mẫu hoặc tên sản phẩm' : null);
@@ -253,14 +477,14 @@ function createServer({ slowMs = 0 } = {}) {
         if (!/name="file"/.test(raw)) return err(res, 400, 'VALIDATION', 'Chưa chọn ảnh.');
         const cm = raw.match(/name="colorId"\r\n\r\n(\d+)/);
         const id = A.nextMedia++;
-        const item = { id, colorId: cm ? Number(cm[1]) : null, url: `/media/m/mock${id}.webp`, thumbUrl: `/media/t/mock${id}.webp`, primary: p.media.length === 0, sortOrder: p.media.length, width: 1200, height: 1600, sizeBytes: 90000 };
+        const item = { id, colorId: cm ? fromWire(cm[1]) : null, url: `/media/m/mock${id}.webp`, thumbUrl: `/media/t/mock${id}.webp`, primary: p.media.length === 0, sortOrder: p.media.length, width: 1200, height: 1600, sizeBytes: 90000 };
         p.media.push(item);
         return send(res, 201, item);
       }
       m = path.match(/^\/products\/(\d+)\/media\/(\d+)$/);
       if (m) {
         const p = mustProduct(m[1]);
-        const item = p && p.media.find((x) => x.id === Number(m[2]));
+        const item = p && p.media.find((x) => x.id === fromWire(m[2]));
         if (!item) return err(res, 404, 'NOT_FOUND', 'Không tìm thấy ảnh.');
         if (req.method === 'PATCH') {
           const b = await readBody(req);
@@ -291,7 +515,7 @@ function createServer({ slowMs = 0 } = {}) {
     const byId = url.pathname.match(/^\/api\/variants\/(\d+)$/);
     if (req.method === 'GET' && byId) {
       if (!user.permissions.includes('product.view')) return err(res, 403, 'FORBIDDEN', 'Bạn không có quyền thực hiện thao tác này.');
-      const found = VARIANTS.find((v) => v.id === Number(byId[1]));
+      const found = VARIANTS.find((v) => v.id === fromWire(byId[1]));
       return found ? send(res, 200, detailOf(found, user)) : err(res, 404, 'NOT_FOUND', 'Không tìm thấy sản phẩm.');
     }
 
@@ -315,7 +539,7 @@ function createServer({ slowMs = 0 } = {}) {
     const confirm = url.pathname.match(/^\/api\/scan\/(\d+)\/confirm$/);
     if (req.method === 'POST' && confirm) {
       const { variantId } = await readBody(req);
-      confirmations.push({ scanEventId: Number(confirm[1]), variantId });
+      confirmations.push({ scanEventId: fromWire(confirm[1]), variantId: fromWire(variantId) });
       res.writeHead(204);
       return res.end();
     }

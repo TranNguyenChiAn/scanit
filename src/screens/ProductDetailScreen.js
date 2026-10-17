@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, FlatList, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../auth/AuthContext';
+import { addItem, itemFromProduct, stockMessage } from '../utils/draft';
 import { colors, type, spacing, radius } from '../theme/theme';
 import { formatPrice, stockLabel } from '../utils/format';
 import ProductImage from '../components/ProductImage';
@@ -10,6 +12,9 @@ const STOCK_COLORS = { ok: colors.accentDark, low: colors.warn, out: colors.dang
 export default function ProductDetailScreen({ route, navigation }) {
   const { product } = route.params;
   const { width } = useWindowDimensions();
+  const { user } = useAuth();
+  const canOrder = !!user?.permissions?.includes('order.create');
+  const [addError, setAddError] = useState(null);
   const [page, setPage] = useState(0);
   const stock = stockLabel(product.quantity);
   const images = product.images?.length ? product.images : [null];
@@ -109,12 +114,27 @@ export default function ProductDetailScreen({ route, navigation }) {
       </ScrollView>
 
       <View style={styles.footer}>
+        {canOrder ? (
+          <Pressable
+            style={styles.orderBtn}
+            onPress={() => {
+              const r = addItem(itemFromProduct(product), 1);
+              if (r.ok) navigation.navigate('OrderEdit');
+              else setAddError(stockMessage(r));
+            }}
+          >
+            <Text style={styles.orderBtnText}>+ Thêm vào đơn tạm</Text>
+          </Pressable>
+        ) : null}
+        {addError ? <Text style={styles.addError}>{addError}</Text> : null}
+        <View style={styles.footerRow}>
         <Pressable style={styles.secondaryBtn} onPress={() => navigation.navigate('Home')}>
           <Text style={styles.secondaryBtnText}>Xong</Text>
         </Pressable>
         <Pressable style={styles.primaryBtn} onPress={() => navigation.replace('Scanner')}>
           <Text style={styles.primaryBtnText}>Quét tiếp</Text>
         </Pressable>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -157,13 +177,16 @@ const styles = StyleSheet.create({
   detailLabel: { color: colors.inkSoft, fontSize: 14 },
   detailValue: { color: colors.ink, fontSize: 14, fontWeight: '600', flexShrink: 1, textAlign: 'right', marginLeft: spacing.md },
   footer: {
-    flexDirection: 'row',
     padding: spacing.lg,
     gap: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
+  footerRow: { flexDirection: 'row', gap: spacing.md },
+  orderBtn: { paddingVertical: spacing.md, borderRadius: radius.pill, backgroundColor: colors.accent, alignItems: 'center' },
+  orderBtnText: { color: colors.ink, fontWeight: '700', fontSize: 15 },
+  addError: { color: colors.danger, fontSize: 13, textAlign: 'center' },
   secondaryBtn: {
     flex: 1,
     paddingVertical: spacing.md,
